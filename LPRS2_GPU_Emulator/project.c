@@ -32,11 +32,13 @@
 #define STEP 1
 #define WORM_ANIM_DELAY 7
 
-#define X_SIZE 17
-#define Y_SIZE 9
-#define BLOCK_SIZE 25
+#define X_SIZE 15
+#define Y_SIZE 7
+#define BLOCK_SIZE 30
+#define BOUND_BLOCK_SIZE 15
 
 //Structures
+
 //TODO ovde treba uvezati Nintendo kontroler
 //Struct for controller
 typedef struct {
@@ -164,13 +166,13 @@ void draw_sprite_from_atlas_walls(uint16_t src_x, uint16_t src_y, uint16_t w, ui
 void draw_map(uint16_t src_x, uint16_t src_y){
     //Upper and lower bound
     uint16_t dst_x_upper = 0;
-    uint16_t dst_y_upper = 0;
+    uint16_t dst_y_upper = 8;
     uint16_t dst_x_lower = 0;
-    uint16_t dst_y_lower = 241;
+    uint16_t dst_y_lower = 256 - BOUND_BLOCK_SIZE - 8;
 
-    for(uint16_t z = 0; z < 20; z++){
-        for(uint16_t y = 0; y < 16; y++){
-            for(uint16_t x = 0; x < 25; x++){
+    for(uint16_t z = 0; z < 32; z++){
+        for(uint16_t y = 0; y < BOUND_BLOCK_SIZE; y++){
+            for(uint16_t x = 0; x < BOUND_BLOCK_SIZE; x++){
                 uint32_t src_idx = (src_y+y)*walls__w + (src_x+x);
                 uint16_t pixel = walls__p[src_idx];
 
@@ -183,19 +185,20 @@ void draw_map(uint16_t src_x, uint16_t src_y){
                 unpack_rgb333_p32[dst_idx] = pixel;
             }
         }
-        dst_x_upper += 25;
-        dst_x_lower += 25;
+        dst_x_upper += BOUND_BLOCK_SIZE;
+        dst_x_lower += BOUND_BLOCK_SIZE;
     }
 
     //Left and right bound
-    uint16_t dst_x_left  = 10;
-    uint16_t dst_y_left  = 16;
-    uint16_t dst_x_right = 480 - 27;
-    uint16_t dst_y_right = 16;
+    uint16_t dst_x_left  = 0;
+    uint16_t dst_y_left  = 0;
+    uint16_t dst_x_right = 480 - BOUND_BLOCK_SIZE;
+    uint16_t dst_y_right = 0;
 
-    for(uint16_t z = 0; z < 9; z++){
-        for(uint16_t y = 0; y < 25; y++){
-            for(uint16_t x = 0; x < 16; x++){
+    //TODO jedan pixel dole je ostao nedirnut, ako bude potrebno, regulisi ovo
+    for(uint16_t z = 0; z < 17; z++){
+        for(uint16_t y = 0; y < BOUND_BLOCK_SIZE; y++){
+            for(uint16_t x = 0; x < BOUND_BLOCK_SIZE; x++){
                 uint32_t src_idx = (src_y+y)*walls__w + (src_x+x);
                 uint16_t pixel = walls__p[src_idx];
 
@@ -209,17 +212,17 @@ void draw_map(uint16_t src_x, uint16_t src_y){
             }
         }
 
-        dst_y_left  += 25;
-        dst_y_right += 25;
+        dst_y_left  += BOUND_BLOCK_SIZE;
+        dst_y_right += BOUND_BLOCK_SIZE;
     }
 
     uint16_t dst_x_upper_pom = 0;
     uint16_t dst_y_upper_pom = 0;
-    uint16_t dst_x_lower_pom = 480 - 12;
-    uint16_t dst_y_lower_pom = 0;
+    uint16_t dst_x_lower_pom = 0;
+    uint16_t dst_y_lower_pom = 256 - 8;
 
-    for(uint16_t y = 0; y < 257; y++) {
-        for (uint16_t x = 0; x < 12; x++) {
+    for(uint16_t y = 0; y < 8; y++) {
+        for (uint16_t x = 0; x < 480; x++) {
             uint32_t dst_idx_pom = (dst_y_upper_pom + y) * SCREEN_RGB333_W + (dst_x_upper_pom + x);
             unpack_rgb333_p32[dst_idx_pom] = 910;
 
@@ -239,8 +242,8 @@ void draw_matrix_of_blocks(uint16_t src_x, uint16_t src_y, block_t matrix_of_blo
                 uint32_t dst_x = matrix_of_blocks[a][b].pos.x;
 
                 //Draw block
-                for (uint16_t y = 0; y < 25; y++) {
-                    for (uint16_t x = 0; x < 25; x++) {
+                for (uint16_t y = 0; y < BLOCK_SIZE; y++) {
+                    for (uint16_t x = 0; x < BLOCK_SIZE; x++) {
                         uint32_t src_idx = (src_y + y) * walls__w + (src_x + x);
                         uint32_t dst_idx = (dst_y + y) * SCREEN_RGB333_W + (dst_x + x);
                         uint16_t pixel = walls__p[src_idx];
@@ -253,7 +256,7 @@ void draw_matrix_of_blocks(uint16_t src_x, uint16_t src_y, block_t matrix_of_blo
 }
 
 int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_SIZE]){
-    uint16_t tol = 25;
+    uint16_t tol = BLOCK_SIZE;
     uint16_t flag = 1;
 
     switch(pravac){
@@ -266,7 +269,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         if( abs(matrix_of_blocks[a][b].pos.x - worm.pos.x) < tol ){
                             //TODO gledaj samo fixed blokove
                             if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
-                                if( (worm.pos.y - 1) - (matrix_of_blocks[a][b].pos.y + 25) < 0){
+                                if( (worm.pos.y - 1) - (matrix_of_blocks[a][b].pos.y + BLOCK_SIZE) < 0){
                                     flag &= 0;
                                 }else{
                                     flag &= 1;
@@ -288,7 +291,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         if( abs(matrix_of_blocks[a][b].pos.y - worm.pos.y) < tol ){
                             //TODO gledaj samo fixed blokove
                             if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
-                                if( (worm.pos.x - 1) - (matrix_of_blocks[a][b].pos.x + 25) < 0){
+                                if( (worm.pos.x - 1) - (matrix_of_blocks[a][b].pos.x + BLOCK_SIZE) < 0){
                                     flag &= 0;
                                 }else{
                                     flag &= 1;
@@ -310,7 +313,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         if( abs(matrix_of_blocks[a][b].pos.x - worm.pos.x) < tol ){
                             //TODO gledaj samo fixed blokove
                             if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
-                                if( (worm.pos.y + 1 + 25) - (matrix_of_blocks[a][b].pos.y) > 0){
+                                if( (worm.pos.y + 1 + BLOCK_SIZE) - (matrix_of_blocks[a][b].pos.y) > 0){
                                     flag &= 0;
                                 }else{
                                     flag &= 1;
@@ -332,7 +335,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         if( abs(matrix_of_blocks[a][b].pos.y - worm.pos.y) < tol ){
                             //TODO gledaj samo fixed blokove
                             if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
-                                if( (worm.pos.x + 1 + 25) - (matrix_of_blocks[a][b].pos.x) > 0){
+                                if( (worm.pos.x + 1 + BLOCK_SIZE) - (matrix_of_blocks[a][b].pos.x) > 0){
                                     flag &= 0;
                                 }else{
                                     flag &= 1;
@@ -358,8 +361,8 @@ int main(void) {
     gpu_p32[0] = 3;                                                                                                     // RGB333 mode
     gpu_p32[0x800] = 0x00ff00ff;                                                                                        // Magenta for HUD
 
-    uint16_t x_offset = 27;
-    uint16_t y_offset = 16;
+    uint16_t x_offset = BOUND_BLOCK_SIZE;
+    uint16_t y_offset = BOUND_BLOCK_SIZE + 8;
 
     // Game state.
     game_state_t gs;
@@ -426,19 +429,19 @@ int main(void) {
 
                 //Out of bounds fix
                 //24 - worm width, 27 frame width
-                if(gs.worm.pos.x + mov_x*STEP > SCREEN_RGB333_W - 24 - 28){
-                    gs.worm.pos.x = SCREEN_RGB333_W - 24 - 28;
-                }else if(gs.worm.pos.x + mov_x*STEP < 28){
-                    gs.worm.pos.x = 27;
+                if(gs.worm.pos.x + mov_x*STEP > SCREEN_RGB333_W - 24 - BOUND_BLOCK_SIZE){
+                    gs.worm.pos.x = SCREEN_RGB333_W - 24 - BOUND_BLOCK_SIZE;
+                }else if(gs.worm.pos.x + mov_x*STEP < BOUND_BLOCK_SIZE){
+                    gs.worm.pos.x = BOUND_BLOCK_SIZE;
                 }else{
                     gs.worm.pos.x += mov_x*STEP;
                 }
 
                 //25 worm height, 16 frame height
-                if(gs.worm.pos.y + mov_y*STEP > SCREEN_RGB333_H - 25 - 15){
-                    gs.worm.pos.y = SCREEN_RGB333_H - 25 - 15;
-                }else if(gs.worm.pos.y + mov_y*STEP < 16){
-                    gs.worm.pos.y = 16;
+                if(gs.worm.pos.y + mov_y*STEP > SCREEN_RGB333_H - 25 - BOUND_BLOCK_SIZE - 8){
+                    gs.worm.pos.y = SCREEN_RGB333_H - 25 - BOUND_BLOCK_SIZE - 8;
+                }else if(gs.worm.pos.y + mov_y*STEP < BOUND_BLOCK_SIZE + 8){
+                    gs.worm.pos.y = BOUND_BLOCK_SIZE + 8;
                 }else{
                     gs.worm.pos.y += mov_y*STEP;
                 }
