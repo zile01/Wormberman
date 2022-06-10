@@ -263,13 +263,13 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
         case 'w':
             for(uint16_t a = 0; a < Y_SIZE; a++) {
                 for (uint16_t b = 0; b < X_SIZE; b++) {
-                    //TODO iskuliraj sve blokove sa vecim y
+                    //TODO iskuliraj sve blokove sa manjim y
                     if(matrix_of_blocks[a][b].pos.y < worm.pos.y ){
                         //TODO gledaj samo blokove koji su u x okolini
-                        if( abs(matrix_of_blocks[a][b].pos.x - worm.pos.x) < tol ){
+                        if( abs(matrix_of_blocks[a][b].pos.x - worm.pos.x) < 30){
                             //TODO gledaj samo fixed blokove
                             if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
-                                if( (worm.pos.y - 1) - (matrix_of_blocks[a][b].pos.y + BLOCK_SIZE) < 0){
+                                if( ((worm.pos.y - 1) - (matrix_of_blocks[a][b].pos.y + BLOCK_SIZE) < 0) && (( (worm.pos.x + 25) - matrix_of_blocks[a][b].pos.x) > 0 ) && (( matrix_of_blocks[a][b].pos.x + BLOCK_SIZE - (worm.pos.x)) > 0 )){
                                     flag &= 0;
                                 }else{
                                     flag &= 1;
@@ -291,7 +291,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         if( abs(matrix_of_blocks[a][b].pos.y - worm.pos.y) < tol ){
                             //TODO gledaj samo fixed blokove
                             if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
-                                if( (worm.pos.x - 1) - (matrix_of_blocks[a][b].pos.x + BLOCK_SIZE) < 0){
+                                if( ((worm.pos.x - 1) - (matrix_of_blocks[a][b].pos.x + BLOCK_SIZE) < 0) && (( (worm.pos.y + 25) - matrix_of_blocks[a][b].pos.y) > 0 ) && (( matrix_of_blocks[a][b].pos.y + BLOCK_SIZE - (worm.pos.y)) > 0 )){
                                     flag &= 0;
                                 }else{
                                     flag &= 1;
@@ -313,7 +313,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         if( abs(matrix_of_blocks[a][b].pos.x - worm.pos.x) < tol ){
                             //TODO gledaj samo fixed blokove
                             if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
-                                if( (worm.pos.y + 1 + BLOCK_SIZE) - (matrix_of_blocks[a][b].pos.y) > 0){
+                                if( ((worm.pos.y + 1 + 20) - (matrix_of_blocks[a][b].pos.y) > 0) && (( (worm.pos.x + 25) - matrix_of_blocks[a][b].pos.x) > 0 ) && (( matrix_of_blocks[a][b].pos.x + BLOCK_SIZE - (worm.pos.x)) > 0 ) ){
                                     flag &= 0;
                                 }else{
                                     flag &= 1;
@@ -335,7 +335,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         if( abs(matrix_of_blocks[a][b].pos.y - worm.pos.y) < tol ){
                             //TODO gledaj samo fixed blokove
                             if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
-                                if( (worm.pos.x + 1 + BLOCK_SIZE) - (matrix_of_blocks[a][b].pos.x) > 0){
+                                if( ((worm.pos.x + 1 + 20) - (matrix_of_blocks[a][b].pos.x) > 0) && (( (worm.pos.y + 25) - matrix_of_blocks[a][b].pos.y) > 0 ) && (( matrix_of_blocks[a][b].pos.y + BLOCK_SIZE - (worm.pos.y)) > 0 )){
                                     flag &= 0;
                                 }else{
                                     flag &= 1;
@@ -357,6 +357,9 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
 int main(void) {
     //Basic settings
     srand(time(0));
+
+    int toggle_pre = 'x';
+    int toggle_sad = 'x';
 
     gpu_p32[0] = 3;                                                                                                     // RGB333 mode
     gpu_p32[0x800] = 0x00ff00ff;                                                                                        // Magenta for HUD
@@ -427,6 +430,16 @@ int main(void) {
                     }
                 }
 
+                toggle_sad = pravac;
+
+                if(toggle_pre == 's' && toggle_sad == 'a' || toggle_pre == 's' && toggle_sad == 'd'){
+                    gs.worm.pos.y -= 5;
+                }else if(toggle_pre == 'd' && toggle_sad == 'w' || toggle_pre == 'd' && toggle_sad == 's'){
+                    gs.worm.pos.x -= 5;
+                }
+
+                toggle_pre = toggle_sad;
+
                 //Out of bounds fix
                 //24 - worm width, 27 frame width
                 if(gs.worm.pos.x + mov_x*STEP > SCREEN_RGB333_W - 24 - BOUND_BLOCK_SIZE){
@@ -438,8 +451,8 @@ int main(void) {
                 }
 
                 //25 worm height, 16 frame height
-                if(gs.worm.pos.y + mov_y*STEP > SCREEN_RGB333_H - 25 - BOUND_BLOCK_SIZE - 8){
-                    gs.worm.pos.y = SCREEN_RGB333_H - 25 - BOUND_BLOCK_SIZE - 8;
+                if(gs.worm.pos.y + mov_y*STEP > SCREEN_RGB333_H - 20 - BOUND_BLOCK_SIZE - 8){
+                    gs.worm.pos.y = SCREEN_RGB333_H - 20 - BOUND_BLOCK_SIZE - 8;
                 }else if(gs.worm.pos.y + mov_y*STEP < BOUND_BLOCK_SIZE + 8){
                     gs.worm.pos.y = BOUND_BLOCK_SIZE + 8;
                 }else{
@@ -640,10 +653,10 @@ int main(void) {
                                 draw_sprite_from_atlas_worms(155, 9, 24, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
                                 break;
                             case 's':
-                                draw_sprite_from_atlas_worms(696 - 33, 1920 - 179, 25, 24, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                draw_sprite_from_atlas_worms(696 - 33, 1920 - 175, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
                                 break;
                             case 'd':
-                                draw_sprite_from_atlas_worms(1920 - 179, 9, 24, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                draw_sprite_from_atlas_worms(1920 - 175, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
                                 break;
                             default:
                                 break;
