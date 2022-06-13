@@ -162,7 +162,6 @@ void draw_sprite_from_atlas_walls(uint16_t src_x, uint16_t src_y, uint16_t w, ui
     }
 }
 
-//TODO sredi ovu funkciju da ispisuje bas lepe blokove
 void draw_map(uint16_t src_x, uint16_t src_y){
     //Upper and lower bound
     uint16_t dst_x_upper = 0;
@@ -191,9 +190,9 @@ void draw_map(uint16_t src_x, uint16_t src_y){
 
     //Left and right bound
     uint16_t dst_x_left  = 0;
-    uint16_t dst_y_left  = 0;
+    uint16_t dst_y_left  = 8;
     uint16_t dst_x_right = 480 - BOUND_BLOCK_SIZE;
-    uint16_t dst_y_right = 0;
+    uint16_t dst_y_right = 8;
 
     //TODO jedan pixel dole je ostao nedirnut, ako bude potrebno, regulisi ovo
     for(uint16_t z = 0; z < 17; z++){
@@ -224,16 +223,17 @@ void draw_map(uint16_t src_x, uint16_t src_y){
     for(uint16_t y = 0; y < 8; y++) {
         for (uint16_t x = 0; x < 480; x++) {
             uint32_t dst_idx_pom = (dst_y_upper_pom + y) * SCREEN_RGB333_W + (dst_x_upper_pom + x);
-            unpack_rgb333_p32[dst_idx_pom] = 910;
+            unpack_rgb333_p32[dst_idx_pom] = 5;
 
             dst_idx_pom = (dst_y_lower_pom + y) * SCREEN_RGB333_W + (dst_x_lower_pom + x);
-            unpack_rgb333_p32[dst_idx_pom] = 910;
+            unpack_rgb333_p32[dst_idx_pom] = 5;
         }
     }
 }
 
 void draw_matrix_of_blocks(uint16_t src_x, uint16_t src_y, block_t matrix_of_blocks[Y_SIZE][X_SIZE]){
-    //treba da prodjem kroz celu matricu i da crtam blokove kako dolikuje
+
+    //draw_sprite_from_atlas_walls(3280, 172, 30, 30, 400, 160);
 
     for(uint16_t a = 0; a < Y_SIZE; a++){
         for(uint16_t b = 0; b < X_SIZE; b++) {
@@ -430,6 +430,7 @@ int main(void) {
                     }
                 }
 
+                //Toggle fix when worm change direction
                 toggle_sad = pravac;
 
                 if(toggle_pre == 's' && toggle_sad == 'a' || toggle_pre == 's' && toggle_sad == 'd'){
@@ -442,8 +443,8 @@ int main(void) {
 
                 //Out of bounds fix
                 //24 - worm width, 27 frame width
-                if(gs.worm.pos.x + mov_x*STEP > SCREEN_RGB333_W - 24 - BOUND_BLOCK_SIZE){
-                    gs.worm.pos.x = SCREEN_RGB333_W - 24 - BOUND_BLOCK_SIZE;
+                if(gs.worm.pos.x + mov_x*STEP > SCREEN_RGB333_W - 20 - BOUND_BLOCK_SIZE){
+                    gs.worm.pos.x = SCREEN_RGB333_W - 20 - BOUND_BLOCK_SIZE;
                 }else if(gs.worm.pos.x + mov_x*STEP < BOUND_BLOCK_SIZE){
                     gs.worm.pos.x = BOUND_BLOCK_SIZE;
                 }else{
@@ -563,8 +564,9 @@ int main(void) {
                 }
 
                 //Draw blocks
-                draw_map(0, 0);
-                draw_matrix_of_blocks(0, 0, gs.matrix_of_blocks);
+                draw_map(3168, 192);
+                draw_matrix_of_blocks(3280, 172, gs.matrix_of_blocks);
+                //draw_sprite_from_atlas_walls(3100, 75, 300, 300, 0, 0);
 
                 //Draw worm
                 switch(gs.worm.anim.state){
