@@ -65,6 +65,7 @@ typedef struct {
     uint16_t y;
 } point_t;
 
+//Game phases
 typedef enum {
     MENU_PHASE,
     GAME_PHASE,
@@ -92,6 +93,7 @@ typedef struct {
     worm_anim_t anim;
 } worm_t;
 
+//Structs for blocks
 typedef enum {
     BLOCK_PRESENT,
     BLOCK_DESTROYED
@@ -109,11 +111,25 @@ typedef struct {
     block_type_t type;
 } block_t;
 
+typedef enum {
+   BOMB_PRESENT,
+   BOMB_NOT_PRESENT
+} bomb_state_t;
+
+//Struct for bomb
+typedef struct {
+    point_t pos;
+    bomb_state_t state;
+    int bomb_counter;
+} bomb_t;
+
 //Struct for all elements
 typedef struct {
     worm_t worm;
     game_states_t state;
     block_t matrix_of_blocks[Y_SIZE][X_SIZE];
+    bomb_t bomb;
+
 } game_state_t;
 
 //Functions
@@ -140,6 +156,10 @@ void draw_sprite_from_atlas_worms(uint16_t src_x, uint16_t src_y, uint16_t w, ui
                 case 'd':
                     src_idx = (src_y+y)*worms_1_right__w + (src_x+x);
                     pixel = worms_1_right__p[src_idx];
+                    break;
+                case 'b':
+                    src_idx = (src_y+y)*worms_1_left__w + (src_x+x);
+                    pixel = worms_1_left__p[src_idx];
                     break;
                 default:
                     break;
@@ -255,6 +275,17 @@ void draw_matrix_of_blocks(uint16_t src_x, uint16_t src_y, block_t matrix_of_blo
     }
 }
 
+void draw_sprite_from_atlas_explosion(uint16_t src_x, uint16_t src_y, uint16_t w, uint16_t h, uint16_t dst_x, uint16_t dst_y) {
+    for(uint16_t y = 0; y < h; y++){
+        for(uint16_t x = 0; x < w; x++){
+            uint32_t src_idx = (src_y+y)*explosion__w + (src_x+x);
+            uint32_t dst_idx = (dst_y+y)*SCREEN_RGB333_W + (dst_x+x);
+            uint16_t pixel = explosion__p[src_idx];
+            unpack_rgb333_p32[dst_idx] = pixel;
+        }
+    }
+}
+
 int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_SIZE]){
     uint16_t tol = BLOCK_SIZE;
     uint16_t flag = 1;
@@ -353,6 +384,8 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
     }
 }
 
+int bomb_flag = 0;
+
 //Game
 int main(void) {
     //Basic settings
@@ -367,8 +400,9 @@ int main(void) {
     uint16_t x_offset = BOUND_BLOCK_SIZE;
     uint16_t y_offset = BOUND_BLOCK_SIZE + 8;
 
-    // Game state.
+    //Game state settings
     game_state_t gs;
+    gs.state = GAME_PHASE;
 
     //Worm settings
     gs.worm.pos.x = x_offset;
@@ -376,7 +410,8 @@ int main(void) {
     gs.worm.anim.state = WORM_IDLE;
     gs.worm.anim.delay_cnt = 0;
 
-    gs.state = GAME_PHASE;
+    //Bomb settings
+    gs.bomb.state = BOMB_NOT_PRESENT;
 
     //Matrix fullfilling
     for(uint16_t a = 0; a < Y_SIZE; a++){
@@ -396,14 +431,15 @@ int main(void) {
 
     char pravac = 'd';
 
+    //Game states
     switch(gs.state){
         case GAME_PHASE:
             //Game loop
             while(1){
+                //Movement in all directions
                 int mov_x = 0;
                 int mov_y = 0;
 
-                //Movement in all directions
                 if(joypad.up){
                     pravac = 'w';
 
@@ -430,6 +466,7 @@ int main(void) {
                     }
                 }
 
+
                 //Toggle fix when worm change direction
                 toggle_sad = pravac;
 
@@ -441,8 +478,8 @@ int main(void) {
 
                 toggle_pre = toggle_sad;
 
+
                 //Out of bounds fix
-                //24 - worm width, 27 frame width
                 if(gs.worm.pos.x + mov_x*STEP > SCREEN_RGB333_W - 20 - BOUND_BLOCK_SIZE){
                     gs.worm.pos.x = SCREEN_RGB333_W - 20 - BOUND_BLOCK_SIZE;
                 }else if(gs.worm.pos.x + mov_x*STEP < BOUND_BLOCK_SIZE){
@@ -451,7 +488,6 @@ int main(void) {
                     gs.worm.pos.x += mov_x*STEP;
                 }
 
-                //25 worm height, 16 frame height
                 if(gs.worm.pos.y + mov_y*STEP > SCREEN_RGB333_H - 20 - BOUND_BLOCK_SIZE - 8){
                     gs.worm.pos.y = SCREEN_RGB333_H - 20 - BOUND_BLOCK_SIZE - 8;
                 }else if(gs.worm.pos.y + mov_y*STEP < BOUND_BLOCK_SIZE + 8){
@@ -459,6 +495,23 @@ int main(void) {
                 }else{
                     gs.worm.pos.y += mov_y*STEP;
                 }
+
+
+                //Bomb functionality
+                if(gs.bomb.state == BOMB_NOT_PRESENT && joypad.b == 1){
+                    gs.bomb.pos.x = gs.worm.pos.x;
+                    gs.bomb.pos.y = gs.worm.pos.y;
+                    gs.bomb.state = BOMB_PRESENT;
+                    gs.bomb.bomb_counter = 120;
+                }else if(gs.bomb.state == BOMB_PRESENT){
+                    gs.bomb.bomb_counter--;
+
+                    if (gs.bomb.bomb_counter < 0){
+                        gs.bomb.bomb_counter = 0;
+                        gs.bomb.state = BOMB_NOT_PRESENT;
+                    }
+                }
+
 
                 //State machine
                 switch(gs.worm.anim.state){
@@ -550,10 +603,12 @@ int main(void) {
                         break;
                 }
 
-                // Detecting rising edge of VSync.
+
+                // Detecting rising edge of VSync
+                // Draw in buffer while it is in VSync
                 WAIT_UNITL_0(gpu_p32[2]);
                 WAIT_UNITL_1(gpu_p32[2]);
-                // Draw in buffer while it is in VSync.
+
 
                 //Drawing
                 //Draw black background
@@ -567,6 +622,14 @@ int main(void) {
                 draw_map(3168, 192);
                 draw_matrix_of_blocks(3280, 172, gs.matrix_of_blocks);
                 //draw_sprite_from_atlas_walls(3100, 75, 300, 300, 0, 0);
+
+                //Draw bomb
+                if(gs.bomb.state == BOMB_PRESENT){
+                    draw_sprite_from_atlas_worms(13, 382, 11, 21, gs.bomb.pos.x, gs.bomb.pos.y, 'b');
+                }
+
+                //TODO temporary draw explosion
+                //draw_sprite_from_atlas_explosion(13, 382, 11, 21, 300, 150);
 
                 //Draw worm
                 switch(gs.worm.anim.state){
@@ -649,10 +712,10 @@ int main(void) {
                     case WORM_WALK_4:
                         switch(pravac){
                             case 'w':
-                                draw_sprite_from_atlas_worms(696 - 33, 155, 25, 24, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                draw_sprite_from_atlas_worms(696 - 33, 155, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
                                 break;
                             case 'a':
-                                draw_sprite_from_atlas_worms(155, 9, 24, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                draw_sprite_from_atlas_worms(155, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
                                 break;
                             case 's':
                                 draw_sprite_from_atlas_worms(696 - 33, 1920 - 175, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
