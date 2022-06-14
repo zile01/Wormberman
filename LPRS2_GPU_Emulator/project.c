@@ -309,7 +309,7 @@ void draw_sprite_from_atlas_explosion(uint16_t src_x, uint16_t src_y, uint16_t w
     if(nesto_x < 15){
         dst_x = 15;
         src_x += abs(15 - nesto_x);
-        w -= abs(23 - nesto_y);
+        w -= abs(15 - nesto_x);
     }else{
         dst_x -= x_offset;
     }
@@ -317,7 +317,7 @@ void draw_sprite_from_atlas_explosion(uint16_t src_x, uint16_t src_y, uint16_t w
     if(nesto_y < 23){
         dst_y = 23;
         src_y += abs(23 - nesto_y);
-        h -= abs(15 - nesto_x);
+        h -= abs(23 - nesto_y);
     }else{
         dst_y -= y_offset;
     }
@@ -656,6 +656,7 @@ int main(void) {
                         break;
                 }
 
+
                 //State machine for explosion
                 if(gs.explosion.presence == EXPLOSION_PRESENT){
                   switch (gs.explosion.state) {
@@ -725,6 +726,7 @@ int main(void) {
                   gs.explosion.state = EXPLOSION_IDLE;
                 }
 
+
                 // Detecting rising edge of VSync
                 // Draw in buffer while it is in VSync
                 WAIT_UNITL_0(gpu_p32[2]);
@@ -738,35 +740,6 @@ int main(void) {
                         unpack_rgb333_p32[r*SCREEN_RGB333_W + c] = 0000;
                     }
                 }
-
-                //Draw explosion
-                if(gs.explosion.presence == EXPLOSION_PRESENT){
-                  switch (gs.explosion.state) {
-                    case EXPLOSION_IDLE:
-                      break;
-                    case EXPLOSION_1:
-                    case EXPLOSION_7:
-                      draw_sprite_from_atlas_explosion(41, 448, 72, 72, gs.explosion.pos.x, gs.explosion.pos.y, 35, 35);
-                      break;
-                    case EXPLOSION_2:
-                    case EXPLOSION_6:
-                      draw_sprite_from_atlas_explosion(130, 447, 74, 74, gs.explosion.pos.x, gs.explosion.pos.y, 36, 36);
-                      break;
-                    case EXPLOSION_3:
-                    case EXPLOSION_5:
-                      draw_sprite_from_atlas_explosion(34, 556, 79, 80, gs.explosion.pos.x, gs.explosion.pos.y, 38, 39);
-                      break;
-                    case EXPLOSION_4:
-                      draw_sprite_from_atlas_explosion(133, 557, 80, 80, gs.explosion.pos.x, gs.explosion.pos.y, 39, 39);
-                      break;
-                  }
-                }
-
-                //Draw blocks
-                draw_map(3168, 192);
-                draw_matrix_of_blocks(3280, 172, gs.matrix_of_blocks);
-                //draw_sprite_from_atlas_walls(3100, 75, 300, 300, 0, 0);
-
 
                 //Draw bomb
                 if(gs.bomb.state == BOMB_PRESENT){
@@ -870,6 +843,33 @@ int main(void) {
                         }
                         break;
                 }
+
+                //Draw explosion
+                if(gs.explosion.presence == EXPLOSION_PRESENT){
+                  switch (gs.explosion.state) {
+                    case EXPLOSION_IDLE:
+                      break;
+                    case EXPLOSION_1:
+                    case EXPLOSION_7:
+                      draw_sprite_from_atlas_explosion(41, 448, 72, 72, gs.explosion.pos.x, gs.explosion.pos.y, 35, 35);
+                      break;
+                    case EXPLOSION_2:
+                    case EXPLOSION_6:
+                      draw_sprite_from_atlas_explosion(130, 447, 74, 74, gs.explosion.pos.x, gs.explosion.pos.y, 36, 36);
+                      break;
+                    case EXPLOSION_3:
+                    case EXPLOSION_5:
+                      draw_sprite_from_atlas_explosion(34, 556, 79, 80, gs.explosion.pos.x, gs.explosion.pos.y, 38, 39);
+                      break;
+                    case EXPLOSION_4:
+                      draw_sprite_from_atlas_explosion(133, 557, 80, 80, gs.explosion.pos.x, gs.explosion.pos.y, 39, 39);
+                      break;
+                  }
+                }
+
+                //Draw blocks
+                draw_map(3168, 192);
+                draw_matrix_of_blocks(3280, 172, gs.matrix_of_blocks);
             }
             break;
         case MENU_PHASE:
