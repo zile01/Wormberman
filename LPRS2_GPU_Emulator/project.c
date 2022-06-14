@@ -7,6 +7,7 @@
 #include <math.h>
 #include <time.h>
 
+
 //Defines
 #define WAIT_UNITL_0(x) while(x != 0){}
 #define WAIT_UNITL_1(x) while(x != 1){}
@@ -32,14 +33,13 @@
 #define STEP 1
 #define WORM_ANIM_DELAY 7
 #define BOMB_ANIM_DELAY 5
-
 #define X_SIZE 15
 #define Y_SIZE 7
 #define BLOCK_SIZE 30
 #define BOUND_BLOCK_SIZE 15
 
-//Structures
 
+//Structures
 //TODO ovde treba uvezati Nintendo kontroler
 //Struct for controller
 typedef struct {
@@ -148,7 +148,7 @@ typedef struct {
     uint8_t delay_cnt;
 } explosion_t;
 
-//Struct for all elements
+//Struct for all participants
 typedef struct {
     worm_t worm;
     game_states_t state;
@@ -300,11 +300,33 @@ void draw_matrix_of_blocks(uint16_t src_x, uint16_t src_y, block_t matrix_of_blo
     }
 }
 
-void draw_sprite_from_atlas_explosion(uint16_t src_x, uint16_t src_y, uint16_t w, uint16_t h, uint16_t dst_x, uint16_t dst_y) {
+void draw_sprite_from_atlas_explosion(uint16_t src_x, uint16_t src_y, uint16_t w, uint16_t h, uint16_t dst_x, uint16_t dst_y, uint16_t x_offset, uint16_t y_offset) {
+    int nesto_x = dst_x - x_offset;
+    int nesto_y = dst_y - y_offset;
+
+    //TODO smanji sirinu i visinu iscrtavanja
+
+    if(nesto_x < 15){
+        dst_x = 15;
+        src_x += abs(15 - nesto_x);
+        w -= abs(23 - nesto_y);
+    }else{
+        dst_x -= x_offset;
+    }
+
+    if(nesto_y < 23){
+        dst_y = 23;
+        src_y += abs(23 - nesto_y);
+        h -= abs(15 - nesto_x);
+    }else{
+        dst_y -= y_offset;
+    }
+
     for(uint16_t y = 0; y < h; y++){
-        for(uint16_t x = 0; x < w; x++){
-            uint32_t src_idx = (src_y+y)*explosion__w + (src_x+x);
-            uint32_t dst_idx = (dst_y+y)*SCREEN_RGB333_W + (dst_x+x);
+        for(uint16_t x = 0; x < w; x++) {
+            uint32_t src_idx = (src_y + y) * explosion__w + (src_x + x);
+            uint32_t dst_idx = (dst_y + y) * SCREEN_RGB333_W + (dst_x + x);
+
             uint16_t pixel = explosion__p[src_idx];
             unpack_rgb333_p32[dst_idx] = pixel;
         }
@@ -536,7 +558,6 @@ int main(void) {
                         gs.bomb.bomb_counter = 0;
                         gs.bomb.state = BOMB_NOT_PRESENT;
                         gs.explosion.presence = EXPLOSION_PRESENT;
-                        //TODO menjaj ovo
                         gs.explosion.pos.x = gs.bomb.pos.x + 5;
                         gs.explosion.pos.y = gs.bomb.pos.y + 10;
                     }
@@ -725,18 +746,18 @@ int main(void) {
                       break;
                     case EXPLOSION_1:
                     case EXPLOSION_7:
-                      draw_sprite_from_atlas_explosion(41, 448, 72, 72, gs.explosion.pos.x - 35, gs.explosion.pos.y - 35);
+                      draw_sprite_from_atlas_explosion(41, 448, 72, 72, gs.explosion.pos.x, gs.explosion.pos.y, 35, 35);
                       break;
                     case EXPLOSION_2:
                     case EXPLOSION_6:
-                      draw_sprite_from_atlas_explosion(130, 447, 74, 74, gs.explosion.pos.x - 36, gs.explosion.pos.y - 36);
+                      draw_sprite_from_atlas_explosion(130, 447, 74, 74, gs.explosion.pos.x, gs.explosion.pos.y, 36, 36);
                       break;
                     case EXPLOSION_3:
                     case EXPLOSION_5:
-                      draw_sprite_from_atlas_explosion(34, 556, 79, 80, gs.explosion.pos.x - 38, gs.explosion.pos.y - 39);
+                      draw_sprite_from_atlas_explosion(34, 556, 79, 80, gs.explosion.pos.x, gs.explosion.pos.y, 38, 39);
                       break;
                     case EXPLOSION_4:
-                      draw_sprite_from_atlas_explosion(133, 557, 80, 80, gs.explosion.pos.x - 39, gs.explosion.pos.y - 39);
+                      draw_sprite_from_atlas_explosion(133, 557, 80, 80, gs.explosion.pos.x, gs.explosion.pos.y, 39, 39);
                       break;
                   }
                 }
@@ -745,6 +766,7 @@ int main(void) {
                 draw_map(3168, 192);
                 draw_matrix_of_blocks(3280, 172, gs.matrix_of_blocks);
                 //draw_sprite_from_atlas_walls(3100, 75, 300, 300, 0, 0);
+
 
                 //Draw bomb
                 if(gs.bomb.state == BOMB_PRESENT){
