@@ -37,6 +37,7 @@
 #define Y_SIZE 7
 #define BLOCK_SIZE 30
 #define BOUND_BLOCK_SIZE 15
+#define PROBABILITY 40
 
 
 //Structures
@@ -120,8 +121,8 @@ typedef struct {
 
 //Structs for bomb
 typedef enum {
-   BOMB_PRESENT,
-   BOMB_NOT_PRESENT
+    BOMB_PRESENT,
+    BOMB_NOT_PRESENT
 } bomb_state_t;
 
 typedef struct {
@@ -132,19 +133,19 @@ typedef struct {
 
 //Structs for explosion
 typedef enum {
-   EXPLOSION_IDLE,
-   EXPLOSION_1,
-   EXPLOSION_2,
-   EXPLOSION_3,
-   EXPLOSION_4,
-   EXPLOSION_5,
-   EXPLOSION_6,
-   EXPLOSION_7
+    EXPLOSION_IDLE,
+    EXPLOSION_1,
+    EXPLOSION_2,
+    EXPLOSION_3,
+    EXPLOSION_4,
+    EXPLOSION_5,
+    EXPLOSION_6,
+    EXPLOSION_7
 } explosion_state_t;
 
 typedef enum {
-   EXPLOSION_PRESENT,
-   EXPLOSION_NOT_PRESENT,
+    EXPLOSION_PRESENT,
+    EXPLOSION_NOT_PRESENT,
 } explosion_present_t;
 
 typedef struct {
@@ -282,7 +283,7 @@ void draw_map(uint16_t src_x, uint16_t src_y){
     }
 }
 
-void draw_matrix_of_blocks(uint16_t src_x, uint16_t src_y, block_t matrix_of_blocks[Y_SIZE][X_SIZE]){
+void draw_matrix_of_blocks(uint16_t src_x, uint16_t src_y, uint16_t src_xR, uint16_t src_yR, block_t matrix_of_blocks[Y_SIZE][X_SIZE]){
 
     //draw_sprite_from_atlas_walls(3280, 172, 30, 30, 400, 160);
 
@@ -296,6 +297,20 @@ void draw_matrix_of_blocks(uint16_t src_x, uint16_t src_y, block_t matrix_of_blo
                 for (uint16_t y = 0; y < BLOCK_SIZE; y++) {
                     for (uint16_t x = 0; x < BLOCK_SIZE; x++) {
                         uint32_t src_idx = (src_y + y) * walls__w + (src_x + x);
+                        uint32_t dst_idx = (dst_y + y) * SCREEN_RGB333_W + (dst_x + x);
+                        uint16_t pixel = walls__p[src_idx];
+                        unpack_rgb333_p32[dst_idx] = pixel;
+                    }
+                }
+            }else if (matrix_of_blocks[a][b].type == BLOCK_EMPTY && matrix_of_blocks[a][b].state == BLOCK_PRESENT) {
+
+                uint32_t dst_y = matrix_of_blocks[a][b].pos.y;
+                uint32_t dst_x = matrix_of_blocks[a][b].pos.x;
+
+                //Draw random block
+                for (uint16_t y = 0; y < BLOCK_SIZE; y++) {
+                    for (uint16_t x = 0; x < BLOCK_SIZE; x++) {
+                        uint32_t src_idx = (src_yR + y) * walls__w + (src_xR + x);
                         uint32_t dst_idx = (dst_y + y) * SCREEN_RGB333_W + (dst_x + x);
                         uint16_t pixel = walls__p[src_idx];
                         unpack_rgb333_p32[dst_idx] = pixel;
@@ -352,7 +367,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         //TODO gledaj samo blokove koji su u x okolini
                         if( abs(matrix_of_blocks[a][b].pos.x - worm.pos.x) < 30){
                             //TODO gledaj samo fixed blokove
-                            if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
+                            if(matrix_of_blocks[a][b].type == BLOCK_FIXED || (matrix_of_blocks[a][b].type == BLOCK_EMPTY && matrix_of_blocks[a][b].state == BLOCK_PRESENT)){
                                 if( ((worm.pos.y - 1) - (matrix_of_blocks[a][b].pos.y + BLOCK_SIZE) < 0) && (( (worm.pos.x + 25) - matrix_of_blocks[a][b].pos.x) > 0 ) && (( matrix_of_blocks[a][b].pos.x + BLOCK_SIZE - (worm.pos.x)) > 0 )){
                                     flag &= 0;
                                 }else{
@@ -374,7 +389,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         //TODO gledaj samo blokove koji su u y okolini
                         if( abs(matrix_of_blocks[a][b].pos.y - worm.pos.y) < tol ){
                             //TODO gledaj samo fixed blokove
-                            if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
+                            if(matrix_of_blocks[a][b].type == BLOCK_FIXED || (matrix_of_blocks[a][b].type == BLOCK_EMPTY && matrix_of_blocks[a][b].state == BLOCK_PRESENT)){
                                 if( ((worm.pos.x - 1) - (matrix_of_blocks[a][b].pos.x + BLOCK_SIZE) < 0) && (( (worm.pos.y + 25) - matrix_of_blocks[a][b].pos.y) > 0 ) && (( matrix_of_blocks[a][b].pos.y + BLOCK_SIZE - (worm.pos.y)) > 0 )){
                                     flag &= 0;
                                 }else{
@@ -396,7 +411,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         //TODO gledaj samo blokove koji su u x okolini
                         if( abs(matrix_of_blocks[a][b].pos.x - worm.pos.x) < tol ){
                             //TODO gledaj samo fixed blokove
-                            if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
+                            if(matrix_of_blocks[a][b].type == BLOCK_FIXED || (matrix_of_blocks[a][b].type == BLOCK_EMPTY && matrix_of_blocks[a][b].state == BLOCK_PRESENT)){
                                 if( ((worm.pos.y + 1 + 20) - (matrix_of_blocks[a][b].pos.y) > 0) && (( (worm.pos.x + 25) - matrix_of_blocks[a][b].pos.x) > 0 ) && (( matrix_of_blocks[a][b].pos.x + BLOCK_SIZE - (worm.pos.x)) > 0 ) ){
                                     flag &= 0;
                                 }else{
@@ -418,7 +433,7 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
                         //TODO gledaj samo blokove koji su u y okolini
                         if( abs(matrix_of_blocks[a][b].pos.y - worm.pos.y) < tol ){
                             //TODO gledaj samo fixed blokove
-                            if(matrix_of_blocks[a][b].type == BLOCK_FIXED){
+                            if(matrix_of_blocks[a][b].type == BLOCK_FIXED || (matrix_of_blocks[a][b].type == BLOCK_EMPTY && matrix_of_blocks[a][b].state == BLOCK_PRESENT)){
                                 if( ((worm.pos.x + 1 + 20) - (matrix_of_blocks[a][b].pos.x) > 0) && (( (worm.pos.y + 25) - matrix_of_blocks[a][b].pos.y) > 0 ) && (( matrix_of_blocks[a][b].pos.y + BLOCK_SIZE - (worm.pos.y)) > 0 )){
                                     flag &= 0;
                                 }else{
@@ -475,14 +490,22 @@ int main(void) {
             gs.matrix_of_blocks[a][b].pos.y = a * BLOCK_SIZE + y_offset;
 
             if (a % 2 == 1 && b % 2 == 1) {
-                gs.matrix_of_blocks[a][b].type = BLOCK_FIXED;
+                gs.matrix_of_blocks[a][b].type  = BLOCK_FIXED;
                 gs.matrix_of_blocks[a][b].state = BLOCK_PRESENT;
             } else {
-                gs.matrix_of_blocks[a][b].type = BLOCK_EMPTY;
+                gs.matrix_of_blocks[a][b].type  = BLOCK_EMPTY;
                 gs.matrix_of_blocks[a][b].state = BLOCK_DESTROYED;
+                uint16_t rnd = rand();
+                if(rnd % 100 > PROBABILITY){
+                    gs.matrix_of_blocks[a][b].state = BLOCK_PRESENT;
+                }
             }
         }
     }
+    //Empty blocks for worm start position
+    gs.matrix_of_blocks[0][0].state = BLOCK_DESTROYED;
+    gs.matrix_of_blocks[0][1].state = BLOCK_DESTROYED;
+    gs.matrix_of_blocks[1][0].state = BLOCK_DESTROYED;
 
     char pravac = 'd';
 
@@ -553,11 +576,27 @@ int main(void) {
 
 
                 //Bomb functionality
+                uint16_t explosion_x;
+                uint16_t explosion_y;
                 if(gs.bomb.state == BOMB_NOT_PRESENT && joypad.b == 1){
-                    gs.bomb.pos.x = gs.worm.pos.x;
-                    gs.bomb.pos.y = gs.worm.pos.y;
                     gs.bomb.state = BOMB_PRESENT;
                     gs.bomb.bomb_counter = 120;
+                    for(uint16_t a = 0; a < Y_SIZE; a++){
+                        for(uint16_t b = 0; b < X_SIZE; b++) {
+                            if (gs.worm.pos.x >= gs.matrix_of_blocks[a][b].pos.x){
+                                if (gs.worm.pos.x < gs.matrix_of_blocks[a][b].pos.x + 30){
+                                    if (gs.worm.pos.y >= gs.matrix_of_blocks[a][b].pos.y){
+                                        if (gs.worm.pos.y < gs.matrix_of_blocks[a][b].pos.y + 30){
+                                            explosion_x = gs.matrix_of_blocks[a][b].pos.x + 15;
+                                            explosion_y = gs.matrix_of_blocks[a][b].pos.y + 15;
+                                            gs.bomb.pos.x = gs.matrix_of_blocks[a][b].pos.x + 9;
+                                            gs.bomb.pos.y = gs.matrix_of_blocks[a][b].pos.y + 4;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }else if(gs.bomb.state == BOMB_PRESENT){
                     gs.bomb.bomb_counter--;
 
@@ -565,10 +604,11 @@ int main(void) {
                         gs.bomb.bomb_counter = 0;
                         gs.bomb.state = BOMB_NOT_PRESENT;
                         gs.explosion.presence = EXPLOSION_PRESENT;
-                        gs.explosion.pos.x = gs.bomb.pos.x + 5;
-                        gs.explosion.pos.y = gs.bomb.pos.y + 10;
+                        gs.explosion.pos.x = explosion_x;
+                        gs.explosion.pos.y = explosion_y;
                     }
                 }
+
 
                 //Update worm state
                 int worm_height;
@@ -588,6 +628,7 @@ int main(void) {
                         break;
                 }
 
+
                 //Worm and bomb functionality
                 if( gs.worm.pos.x > gs.explosion.pos.x - (worm_width + 8) &&
                     gs.worm.pos.x < gs.explosion.pos.x + 8  &&
@@ -600,8 +641,24 @@ int main(void) {
                           gs.worm.pos.y > gs.explosion.pos.y - (worm_height + 8) &&
                           gs.worm.pos.y < gs.explosion.pos.y + 8  &&
                           gs.explosion.presence == EXPLOSION_PRESENT){
-                          gs.worm.presence = WORM_NOT_PRESENT;
+                    gs.worm.presence = WORM_NOT_PRESENT;
                 }
+
+
+                //Blocks and bomb functionality
+                for(uint16_t a = 0; a < Y_SIZE; a++){
+                    for(uint16_t b = 0; b < X_SIZE; b++) {
+                        if(gs.explosion.pos.x - 40 < gs.matrix_of_blocks[a][b].pos.x + 30 && gs.explosion.pos.x + 40 > gs.matrix_of_blocks[a][b].pos.x
+                           && gs.explosion.pos.y - 8 < gs.matrix_of_blocks[a][b].pos.y + 30 && gs.explosion.pos.y + 8 > gs.matrix_of_blocks[a][b].pos.y
+                           &&  gs.explosion.presence == EXPLOSION_PRESENT)
+                            gs.matrix_of_blocks[a][b].state = BLOCK_DESTROYED;
+                        if(gs.explosion.pos.y - 40 < gs.matrix_of_blocks[a][b].pos.y + 30 && gs.explosion.pos.y + 40 > gs.matrix_of_blocks[a][b].pos.y
+                           && gs.explosion.pos.x - 8 < gs.matrix_of_blocks[a][b].pos.x + 30 && gs.explosion.pos.x + 8 > gs.matrix_of_blocks[a][b].pos.x
+                           &&  gs.explosion.presence == EXPLOSION_PRESENT)
+                            gs.matrix_of_blocks[a][b].state = BLOCK_DESTROYED;
+                    }
+                }
+
 
                 //State machine
 
@@ -698,71 +755,71 @@ int main(void) {
 
                 //State machine for explosion
                 if(gs.explosion.presence == EXPLOSION_PRESENT){
-                  switch (gs.explosion.state) {
-                    case EXPLOSION_IDLE:
-                      gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                      gs.explosion.state = EXPLOSION_1;
-                      break;
-                    case EXPLOSION_1:
-                      if(gs.explosion.delay_cnt != 0){
-                          gs.explosion.delay_cnt--;
-                      }else{
-                          gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                          gs.explosion.state = EXPLOSION_2;
-                      }
-                      break;
-                    case EXPLOSION_2:
-                      if(gs.explosion.delay_cnt != 0){
-                          gs.explosion.delay_cnt--;
-                      }else{
-                          gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                          gs.explosion.state = EXPLOSION_3;
-                      }
-                      break;
-                    case EXPLOSION_3:
-                      if(gs.explosion.delay_cnt != 0){
-                          gs.explosion.delay_cnt--;
-                      }else{
-                          gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                          gs.explosion.state = EXPLOSION_4;
-                      }
-                      break;
-                    case EXPLOSION_4:
-                      if(gs.explosion.delay_cnt != 0){
-                          gs.explosion.delay_cnt--;
-                      }else{
-                          gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                          gs.explosion.state = EXPLOSION_5;
-                      }
-                      break;
-                    case EXPLOSION_5:
-                      if(gs.explosion.delay_cnt != 0){
-                          gs.explosion.delay_cnt--;
-                      }else{
-                          gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                          gs.explosion.state = EXPLOSION_6;
-                      }
-                      break;
-                    case EXPLOSION_6:
-                      if(gs.explosion.delay_cnt != 0){
-                          gs.explosion.delay_cnt--;
-                      }else{
-                          gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                          gs.explosion.state = EXPLOSION_7;
-                      }
-                      break;
-                    case EXPLOSION_7:
-                      if(gs.explosion.delay_cnt != 0){
-                          gs.explosion.delay_cnt--;
-                      }else{
-                          gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                          gs.explosion.state = EXPLOSION_IDLE;
-                          gs.explosion.presence = EXPLOSION_NOT_PRESENT;
-                      }
-                      break;
-                  }
+                    switch (gs.explosion.state) {
+                        case EXPLOSION_IDLE:
+                            gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
+                            gs.explosion.state = EXPLOSION_1;
+                            break;
+                        case EXPLOSION_1:
+                            if(gs.explosion.delay_cnt != 0){
+                                gs.explosion.delay_cnt--;
+                            }else{
+                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
+                                gs.explosion.state = EXPLOSION_2;
+                            }
+                            break;
+                        case EXPLOSION_2:
+                            if(gs.explosion.delay_cnt != 0){
+                                gs.explosion.delay_cnt--;
+                            }else{
+                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
+                                gs.explosion.state = EXPLOSION_3;
+                            }
+                            break;
+                        case EXPLOSION_3:
+                            if(gs.explosion.delay_cnt != 0){
+                                gs.explosion.delay_cnt--;
+                            }else{
+                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
+                                gs.explosion.state = EXPLOSION_4;
+                            }
+                            break;
+                        case EXPLOSION_4:
+                            if(gs.explosion.delay_cnt != 0){
+                                gs.explosion.delay_cnt--;
+                            }else{
+                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
+                                gs.explosion.state = EXPLOSION_5;
+                            }
+                            break;
+                        case EXPLOSION_5:
+                            if(gs.explosion.delay_cnt != 0){
+                                gs.explosion.delay_cnt--;
+                            }else{
+                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
+                                gs.explosion.state = EXPLOSION_6;
+                            }
+                            break;
+                        case EXPLOSION_6:
+                            if(gs.explosion.delay_cnt != 0){
+                                gs.explosion.delay_cnt--;
+                            }else{
+                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
+                                gs.explosion.state = EXPLOSION_7;
+                            }
+                            break;
+                        case EXPLOSION_7:
+                            if(gs.explosion.delay_cnt != 0){
+                                gs.explosion.delay_cnt--;
+                            }else{
+                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
+                                gs.explosion.state = EXPLOSION_IDLE;
+                                gs.explosion.presence = EXPLOSION_NOT_PRESENT;
+                            }
+                            break;
+                    }
                 }else{
-                  gs.explosion.state = EXPLOSION_IDLE;
+                    gs.explosion.state = EXPLOSION_IDLE;
                 }
 
 
@@ -889,30 +946,30 @@ int main(void) {
 
                 //Draw explosion
                 if(gs.explosion.presence == EXPLOSION_PRESENT){
-                  switch (gs.explosion.state) {
-                    case EXPLOSION_IDLE:
-                      break;
-                    case EXPLOSION_1:
-                    case EXPLOSION_7:
-                      draw_sprite_from_atlas_explosion(41, 448, 72, 72, gs.explosion.pos.x, gs.explosion.pos.y, 35, 35);
-                      break;
-                    case EXPLOSION_2:
-                    case EXPLOSION_6:
-                      draw_sprite_from_atlas_explosion(130, 447, 74, 74, gs.explosion.pos.x, gs.explosion.pos.y, 36, 36);
-                      break;
-                    case EXPLOSION_3:
-                    case EXPLOSION_5:
-                      draw_sprite_from_atlas_explosion(34, 556, 79, 80, gs.explosion.pos.x, gs.explosion.pos.y, 38, 39);
-                      break;
-                    case EXPLOSION_4:
-                      draw_sprite_from_atlas_explosion(133, 557, 80, 80, gs.explosion.pos.x, gs.explosion.pos.y, 39, 39);
-                      break;
-                  }
+                    switch (gs.explosion.state) {
+                        case EXPLOSION_IDLE:
+                            break;
+                        case EXPLOSION_1:
+                        case EXPLOSION_7:
+                            draw_sprite_from_atlas_explosion(41, 448, 72, 72, gs.explosion.pos.x, gs.explosion.pos.y, 35, 35);
+                            break;
+                        case EXPLOSION_2:
+                        case EXPLOSION_6:
+                            draw_sprite_from_atlas_explosion(130, 447, 74, 74, gs.explosion.pos.x, gs.explosion.pos.y, 36, 36);
+                            break;
+                        case EXPLOSION_3:
+                        case EXPLOSION_5:
+                            draw_sprite_from_atlas_explosion(34, 556, 79, 80, gs.explosion.pos.x, gs.explosion.pos.y, 38, 39);
+                            break;
+                        case EXPLOSION_4:
+                            draw_sprite_from_atlas_explosion(133, 557, 80, 80, gs.explosion.pos.x, gs.explosion.pos.y, 39, 39);
+                            break;
+                    }
                 }
 
                 //Draw blocks
                 draw_map(3168, 192);
-                draw_matrix_of_blocks(3280, 172, gs.matrix_of_blocks);
+                draw_matrix_of_blocks(3280, 172, 3280, 209, gs.matrix_of_blocks);
             }
             break;
         case MENU_PHASE:
