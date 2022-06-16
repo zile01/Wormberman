@@ -89,9 +89,15 @@ typedef struct {
     uint8_t delay_cnt;
 } worm_anim_t;
 
+typedef enum {
+    WORM_PRESENT,
+    WORM_NOT_PRESENT,
+} worm_present_t;
+
 typedef struct {
     point_t pos;
     worm_anim_t anim;
+    worm_present_t presence;
 } worm_t;
 
 //Structs for blocks
@@ -450,6 +456,7 @@ int main(void) {
     gs.state = GAME_PHASE;
 
     //Worm settings
+    gs.worm.presence = WORM_PRESENT;
     gs.worm.pos.x = x_offset;
     gs.worm.pos.y = y_offset;
     gs.worm.anim.state = WORM_IDLE;
@@ -563,6 +570,38 @@ int main(void) {
                     }
                 }
 
+                //Update worm state
+                int worm_height;
+                int worm_width;
+
+                switch(pravac){
+                    case 'w':
+                    case 's':
+                        worm_height = 20;
+                        worm_width = 25;
+                        break;
+
+                    case 'a':
+                    case 'd':
+                        worm_height = 25;
+                        worm_width = 20;
+                        break;
+                }
+
+                //Worm and bomb functionality
+                if( gs.worm.pos.x > gs.explosion.pos.x - (worm_width + 8) &&
+                    gs.worm.pos.x < gs.explosion.pos.x + 8  &&
+                    gs.worm.pos.y > gs.explosion.pos.y - (40 + worm_height) &&
+                    gs.worm.pos.y < gs.explosion.pos.y + 40 &&
+                    gs.explosion.presence == EXPLOSION_PRESENT) {
+                    gs.worm.presence = WORM_NOT_PRESENT;
+                }else if( gs.worm.pos.x > gs.explosion.pos.x - (40 + worm_width) &&
+                          gs.worm.pos.x < gs.explosion.pos.x + 40 &&
+                          gs.worm.pos.y > gs.explosion.pos.y - (worm_height + 8) &&
+                          gs.worm.pos.y < gs.explosion.pos.y + 8  &&
+                          gs.explosion.presence == EXPLOSION_PRESENT){
+                          gs.worm.presence = WORM_NOT_PRESENT;
+                }
 
                 //State machine
 
@@ -747,101 +786,105 @@ int main(void) {
                 }
 
                 //Draw worm
-                switch(gs.worm.anim.state){
-                    case WORM_IDLE:
-                        switch(pravac){
-                            case 'w':
-                                draw_sprite_from_atlas_worms(696 - 33, 8, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 'a':
-                                draw_sprite_from_atlas_worms(9, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 's':
-                                draw_sprite_from_atlas_worms(696 - 33, 1920 - 28, 25, 20, gs.worm.pos.x, gs.worm.pos.y, 's');
-                                break;
-                            case 'd':
-                                draw_sprite_from_atlas_worms(1920 - 28, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            default:
-                                break;
-                        }
-                        break;
-                    case WORM_WALK_1:
-                    case WORM_WALK_7:
-                        switch(pravac){
-                            case 'w':
-                                draw_sprite_from_atlas_worms(696 - 33, 45, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 'a':
-                                //TODO ispitaj dal' 46 ili 45
-                                draw_sprite_from_atlas_worms(46, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 's':
-                                draw_sprite_from_atlas_worms(696 - 33, 1920 - 65, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 'd':
-                                draw_sprite_from_atlas_worms(1920 - 65, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            default:
-                                break;
-                        }
-                        break;
-                    case WORM_WALK_2:
-                    case WORM_WALK_6:
-                        switch(pravac){
-                            case 'w':
-                                draw_sprite_from_atlas_worms(696 - 33, 85, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 'a':
-                                draw_sprite_from_atlas_worms(85, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 's':
-                                draw_sprite_from_atlas_worms(696 - 33, 1920 - 101, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 'd':
-                                draw_sprite_from_atlas_worms(1920 - 101, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            default:
-                                break;
-                        }
-                        break;
-                    case WORM_WALK_3:
-                    case WORM_WALK_5:
-                        switch(pravac){
-                            case 'w':
-                                draw_sprite_from_atlas_worms(696 - 33, 120, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 'a':
-                                draw_sprite_from_atlas_worms(120, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 's':
-                                draw_sprite_from_atlas_worms(696 - 33, 1920 - 140, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 'd':
-                                draw_sprite_from_atlas_worms(1920 - 139, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            default:
-                                break;
-                        }
-                        break;
-                    case WORM_WALK_4:
-                        switch(pravac){
-                            case 'w':
-                                draw_sprite_from_atlas_worms(696 - 33, 155, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 'a':
-                                draw_sprite_from_atlas_worms(155, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 's':
-                                draw_sprite_from_atlas_worms(696 - 33, 1920 - 175, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            case 'd':
-                                draw_sprite_from_atlas_worms(1920 - 175, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                break;
-                            default:
-                                break;
-                        }
-                        break;
+                if(gs.worm.presence == WORM_PRESENT){
+                    switch(gs.worm.anim.state){
+                        case WORM_IDLE:
+                            switch(pravac){
+                                case 'w':
+                                    draw_sprite_from_atlas_worms(696 - 33, 8, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 'a':
+                                    draw_sprite_from_atlas_worms(9, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 's':
+                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 28, 25, 20, gs.worm.pos.x, gs.worm.pos.y, 's');
+                                    break;
+                                case 'd':
+                                    draw_sprite_from_atlas_worms(1920 - 28, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                default:
+                                    break;
+                            }
+                            break;
+                        case WORM_WALK_1:
+                        case WORM_WALK_7:
+                            switch(pravac){
+                                case 'w':
+                                    draw_sprite_from_atlas_worms(696 - 33, 45, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 'a':
+                                    //TODO ispitaj dal' 46 ili 45
+                                    draw_sprite_from_atlas_worms(46, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 's':
+                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 65, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 'd':
+                                    draw_sprite_from_atlas_worms(1920 - 65, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                default:
+                                    break;
+                            }
+                            break;
+                        case WORM_WALK_2:
+                        case WORM_WALK_6:
+                            switch(pravac){
+                                case 'w':
+                                    draw_sprite_from_atlas_worms(696 - 33, 85, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 'a':
+                                    draw_sprite_from_atlas_worms(85, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 's':
+                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 101, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 'd':
+                                    draw_sprite_from_atlas_worms(1920 - 101, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                default:
+                                    break;
+                            }
+                            break;
+                        case WORM_WALK_3:
+                        case WORM_WALK_5:
+                            switch(pravac){
+                                case 'w':
+                                    draw_sprite_from_atlas_worms(696 - 33, 120, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 'a':
+                                    draw_sprite_from_atlas_worms(120, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 's':
+                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 140, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 'd':
+                                    draw_sprite_from_atlas_worms(1920 - 139, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                default:
+                                    break;
+                            }
+                            break;
+                        case WORM_WALK_4:
+                            switch(pravac){
+                                case 'w':
+                                    draw_sprite_from_atlas_worms(696 - 33, 155, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 'a':
+                                    draw_sprite_from_atlas_worms(155, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 's':
+                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 175, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                case 'd':
+                                    draw_sprite_from_atlas_worms(1920 - 175, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
+                                    break;
+                                default:
+                                    break;
+                            }
+                            break;
+                    }
+                }else if(gs.worm.presence == WORM_NOT_PRESENT){
+                    //TODO dodaj da crv crkava
                 }
 
                 //Draw explosion
