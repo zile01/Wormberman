@@ -99,7 +99,7 @@ def build(bld):
 		rule = '${PYTHON} ${IMG_TO_SRC} -o ${TGT[0]} ${SRC} ' + \
 			'-f RGB333',
 		source = ['Sprites/worms_1_left.png', 'Sprites/worms_1_up.png', 'Sprites/worms_1_right.png', 'Sprites/worms_1_down.png', 'Sprites/walls.png', 'Sprites/explosion.png', 
-			  'Sprites/start_page.png', 'Sprites/one_won.png', 'Sprites/two_won.png', 'Sprites/blocks.png'], 
+			  'Sprites/start_page.png', 'Sprites/one_won.png', 'Sprites/two_won.png'], 
 		target = ['worms_rgb333.c', 'worms_rgb333.h']
 	)
 	bld.program(
