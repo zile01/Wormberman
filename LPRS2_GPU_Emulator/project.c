@@ -6,6 +6,12 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
+#include <pthread.h>
 
 
 //Defines
@@ -38,10 +44,10 @@
 #define BLOCK_SIZE 30
 #define BOUND_BLOCK_SIZE 15
 #define PROBABILITY 40
-
+#define BOMB_TIME 75
+#define NUMBER_OF_PLAYERS 2
 
 //Structures
-//TODO ovde treba uvezati Nintendo kontroler
 //Struct for controller
 typedef struct {
     unsigned a      : 1;
@@ -157,12 +163,106 @@ typedef struct {
 
 //Struct for all participants
 typedef struct {
-    worm_t worm;
+    worm_t worm[NUMBER_OF_PLAYERS];
+    bomb_t bomb[NUMBER_OF_PLAYERS];
+    explosion_t explosion[NUMBER_OF_PLAYERS];
     game_states_t state;
     block_t matrix_of_blocks[Y_SIZE][X_SIZE];
-    bomb_t bomb;
-    explosion_t explosion;
 } game_state_t;
+
+
+//Nintendo controller
+int set_interface_attribs (int fd, int speed, int parity)
+{
+    struct termios tty;
+    if (tcgetattr (fd, &tty) != 0)
+    {
+        //error_message ("error %d from tcgetattr", errno);
+        printf("Prvi je problem\n");
+        return -1;
+    }
+
+    cfsetospeed (&tty, speed);
+    cfsetispeed (&tty, speed);
+
+    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;     // 8-bit chars
+    // disable IGNBRK for mismatched speed tests; otherwise receive break
+    // as \000 chars
+    tty.c_iflag &= ~IGNBRK;         // disable break processing
+    tty.c_lflag = 0;                // no signaling chars, no echo,
+    // no canonical processing
+    tty.c_oflag = 0;                // no remapping, no delays
+    tty.c_cc[VMIN]  = 0;            // read doesn't block
+    tty.c_cc[VTIME] = 5;            // 0.5 seconds read timeout
+
+    tty.c_iflag &= ~(IXON | IXOFF | IXANY); // shut off xon/xoff ctrl
+
+    tty.c_cflag |= (CLOCAL | CREAD);// ignore modem controls,
+    // enable reading
+    tty.c_cflag &= ~(PARENB | PARODD);      // shut off parity
+    tty.c_cflag |= parity;
+    tty.c_cflag &= ~CSTOPB;
+    //tty.c_cflag &= ~CRTSCTS;
+
+    if (tcsetattr (fd, TCSANOW, &tty) != 0)
+    {
+        //error_message ("error %d from tcsetattr", errno);
+        printf("Drugi je problem\n");
+        return -1;
+    }
+    return 0;
+}
+
+void set_blocking (int fd, int should_block)
+{
+    struct termios tty;
+    memset (&tty, 0, sizeof tty);
+    if (tcgetattr (fd, &tty) != 0)
+    {
+        //error_message ("error %d from tggetattr", errno);
+        return;
+    }
+
+    tty.c_cc[VMIN]  = should_block ? 1 : 0;
+    tty.c_cc[VTIME] = 5;            // 0.5 seconds read timeout
+
+    if (tcsetattr (fd, TCSANOW, &tty) != 0);
+    //error_message ("error %d setting term attributes", errno);
+}
+
+char movement;
+char pom_movement;
+
+void* readDesc(void* par)
+{
+    char* port = "/dev/ttyUSB0";
+    int desc = open(port, O_RDWR | O_NOCTTY | O_SYNC);
+    if (desc < 0)
+    {
+        //error_message ("error %d opening %s: %s", errno, port, strerror (errno));
+        printf("Nije kreiran deskriptor za serijski port\n");
+        return 0;
+    }
+
+    set_interface_attribs (desc, B9600, 0);  // set speed to 115,200 bps, 8n1 (no parity)
+    set_blocking (desc, 0);
+    char b[1];
+    while(1)
+    {
+        int p = read(desc, b, sizeof b);
+        //printf("%c", b[0]);
+        movement = b[0];
+        //printf("%c", movement);
+        pom_movement = movement;
+
+        memset(&b, 0, sizeof b);
+        //printf("%c", movement);
+        usleep(10);
+
+    }
+
+}
+
 
 //Functions
 void draw_sprite_from_atlas_worms(uint16_t src_x, uint16_t src_y, uint16_t w, uint16_t h, uint16_t dst_x, uint16_t dst_y, char flag) {
@@ -354,11 +454,11 @@ void draw_sprite_from_atlas_explosion(uint16_t src_x, uint16_t src_y, uint16_t w
     }
 }
 
-int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_SIZE]){
+int check_movement(worm_t worm, char direction, block_t matrix_of_blocks[Y_SIZE][X_SIZE]){
     uint16_t tol = BLOCK_SIZE;
     uint16_t flag = 1;
 
-    switch(pravac){
+    switch(direction){
         case 'w':
             for(uint16_t a = 0; a < Y_SIZE; a++) {
                 for (uint16_t b = 0; b < X_SIZE; b++) {
@@ -455,10 +555,15 @@ int check_movement(worm_t worm, char pravac, block_t matrix_of_blocks[Y_SIZE][X_
 //Game
 int main(void) {
     //Basic settings
+
     srand(time(0));
 
-    int toggle_pre = 'x';
-    int toggle_sad = 'x';
+    int p = 0;
+    pthread_t thread1;
+    pthread_create(&thread1, NULL, readDesc, (void*)&p);
+
+    int toggle_pre[NUMBER_OF_PLAYERS] = {'x', 'x'};
+    int toggle_sad[NUMBER_OF_PLAYERS] = {'x', 'x'};
 
     gpu_p32[0] = 3;                                                                                                     // RGB333 mode
     gpu_p32[0x800] = 0x00ff00ff;                                                                                        // Magenta for HUD
@@ -466,22 +571,29 @@ int main(void) {
     uint16_t x_offset = BOUND_BLOCK_SIZE;
     uint16_t y_offset = BOUND_BLOCK_SIZE + 8;
 
+    //TODO sumnjivo
+    uint16_t x_offset_array[] = {BOUND_BLOCK_SIZE, SCREEN_RGB333_W - 30};
+    uint16_t y_offset_array[] = {BOUND_BLOCK_SIZE + 8, SCREEN_RGB333_H - BOUND_BLOCK_SIZE - 32};
+
     //Game state settings
     game_state_t gs;
     gs.state = GAME_PHASE;
 
-    //Worm settings
-    gs.worm.presence = WORM_PRESENT;
-    gs.worm.pos.x = x_offset;
-    gs.worm.pos.y = y_offset;
-    gs.worm.anim.state = WORM_IDLE;
-    gs.worm.anim.delay_cnt = 0;
+    int i;
+    for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+        //Worm settings
+        gs.worm[i].presence = WORM_PRESENT;
+        gs.worm[i].pos.x = x_offset_array[i];
+        gs.worm[i].pos.y = y_offset_array[i];
+        gs.worm[i].anim.state = WORM_IDLE;
+        gs.worm[i].anim.delay_cnt = 0;
 
-    //Bomb settings
-    gs.bomb.state = BOMB_NOT_PRESENT;
+        //Bomb settings
+        gs.bomb[i].state = BOMB_NOT_PRESENT;
 
-    //Explosion settings
-    gs.explosion.presence = EXPLOSION_NOT_PRESENT;
+        //Explosion settings
+        gs.explosion[i].presence = EXPLOSION_NOT_PRESENT;
+    }
 
     //Matrix fullfilling
     for(uint16_t a = 0; a < Y_SIZE; a++){
@@ -507,105 +619,187 @@ int main(void) {
     gs.matrix_of_blocks[0][1].state = BLOCK_DESTROYED;
     gs.matrix_of_blocks[1][0].state = BLOCK_DESTROYED;
 
-    char pravac = 'd';
+    gs.matrix_of_blocks[6][14].state = BLOCK_DESTROYED;
+    gs.matrix_of_blocks[5][14].state = BLOCK_DESTROYED;
+    gs.matrix_of_blocks[6][13].state = BLOCK_DESTROYED;
+
+    char direction[NUMBER_OF_PLAYERS] = {'d', 'a'};
+
+    int speed = 0;
 
     //Game states
     switch(gs.state){
         case GAME_PHASE:
             //Game loop
             while(1){
+
+                if(speed == 20){
+                    movement = " ";
+                    speed = 0;
+                }
+                speed++;
+
                 //Movement in all directions
-                int mov_x = 0;
-                int mov_y = 0;
+                int mov_x[NUMBER_OF_PLAYERS] = {0, 0};
+                int mov_y[NUMBER_OF_PLAYERS] = {0, 0};
 
-                if(joypad.up){
-                    pravac = 'w';
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    if(i == 0){
+                        if(joypad.up){
+                            direction[i] = 'w';
 
-                    if(check_movement(gs.worm, pravac, gs.matrix_of_blocks)){
-                        mov_y = -1;
-                    }
-                }else if(joypad.left){
-                    pravac = 'a';
+                            if(check_movement(gs.worm[i], direction[i], gs.matrix_of_blocks)){
+                                mov_y[i] = -1;
+                            }
+                        }else if(joypad.left){
+                            direction[i] = 'a';
 
-                    if(check_movement(gs.worm, pravac, gs.matrix_of_blocks)){
-                        mov_x = -1;
-                    }
-                }else if(joypad.down){
-                    pravac = 's';
+                            if(check_movement(gs.worm[i], direction[i], gs.matrix_of_blocks)){
+                                mov_x[i] = -1;
+                            }
+                        }else if(joypad.down){
+                            direction[i] = 's';
 
-                    if(check_movement(gs.worm, pravac, gs.matrix_of_blocks)){
-                        mov_y = +1;
-                    }
-                }else if(joypad.right){
-                    pravac = 'd';
+                            if(check_movement(gs.worm[i], direction[i], gs.matrix_of_blocks)){
+                                mov_y[i] = +1;
+                            }
+                        }else if(joypad.right){
+                            direction[i] = 'd';
 
-                    if(check_movement(gs.worm, pravac, gs.matrix_of_blocks)){
-                        mov_x = +1;
+                            if(check_movement(gs.worm[i], direction[i], gs.matrix_of_blocks)){
+                                mov_x[i] = +1;
+                            }
+                        }
+                    }else{
+                        if(movement == 'U'){
+                            direction[i] = 'w';
+
+                            if(check_movement(gs.worm[i], direction[i], gs.matrix_of_blocks)){
+                                mov_y[i] = -1;
+                            }
+                        }else if(movement == 'L'){
+                            direction[i] = 'a';
+
+                            if(check_movement(gs.worm[i], direction[i], gs.matrix_of_blocks)){
+                                mov_x[i] = -1;
+                            }
+                        }else if(movement == 'D'){
+                            direction[i] = 's';
+
+                            if(check_movement(gs.worm[i], direction[i], gs.matrix_of_blocks)){
+                                mov_y[i] = +1;
+                            }
+                        }else if(movement == 'R'){
+                            direction[i] = 'd';
+
+                            if(check_movement(gs.worm[i], direction[i], gs.matrix_of_blocks)){
+                                mov_x[i] = +1;
+                            }
+                        }
                     }
                 }
 
 
                 //Toggle fix when worm change direction
-                toggle_sad = pravac;
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    toggle_sad[i] = direction[i];
 
-                if(toggle_pre == 's' && toggle_sad == 'a' || toggle_pre == 's' && toggle_sad == 'd'){
-                    gs.worm.pos.y -= 5;
-                }else if(toggle_pre == 'd' && toggle_sad == 'w' || toggle_pre == 'd' && toggle_sad == 's'){
-                    gs.worm.pos.x -= 5;
+                    if(toggle_pre[i] == 's' && toggle_sad[i] == 'a' || toggle_pre[i] == 's' && toggle_sad[i] == 'd'){
+                        gs.worm[i].pos.y -= 5;
+                    }else if(toggle_pre[i] == 'd' && toggle_sad[i] == 'w' || toggle_pre[i] == 'd' && toggle_sad[i] == 's'){
+                        gs.worm[i].pos.x -= 5;
+                    }
+
+                    toggle_pre[i] = toggle_sad[i];
                 }
 
-                toggle_pre = toggle_sad;
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    //Out of bounds fix
+                    if(gs.worm[i].pos.x + mov_x[i]*STEP > SCREEN_RGB333_W - 20 - BOUND_BLOCK_SIZE){
+                        gs.worm[i].pos.x = SCREEN_RGB333_W - 20 - BOUND_BLOCK_SIZE;
+                    }else if(gs.worm[i].pos.x + mov_x[i]*STEP < BOUND_BLOCK_SIZE){
+                        gs.worm[i].pos.x = BOUND_BLOCK_SIZE;
+                    }else{
+                        gs.worm[i].pos.x += mov_x[i]*STEP;
+                    }
 
-
-                //Out of bounds fix
-                if(gs.worm.pos.x + mov_x*STEP > SCREEN_RGB333_W - 20 - BOUND_BLOCK_SIZE){
-                    gs.worm.pos.x = SCREEN_RGB333_W - 20 - BOUND_BLOCK_SIZE;
-                }else if(gs.worm.pos.x + mov_x*STEP < BOUND_BLOCK_SIZE){
-                    gs.worm.pos.x = BOUND_BLOCK_SIZE;
-                }else{
-                    gs.worm.pos.x += mov_x*STEP;
-                }
-
-                if(gs.worm.pos.y + mov_y*STEP > SCREEN_RGB333_H - 20 - BOUND_BLOCK_SIZE - 8){
-                    gs.worm.pos.y = SCREEN_RGB333_H - 20 - BOUND_BLOCK_SIZE - 8;
-                }else if(gs.worm.pos.y + mov_y*STEP < BOUND_BLOCK_SIZE + 8){
-                    gs.worm.pos.y = BOUND_BLOCK_SIZE + 8;
-                }else{
-                    gs.worm.pos.y += mov_y*STEP;
+                    if(gs.worm[i].pos.y + mov_y[i]*STEP > SCREEN_RGB333_H - 20 - BOUND_BLOCK_SIZE - 8){
+                        gs.worm[i].pos.y = SCREEN_RGB333_H - 20 - BOUND_BLOCK_SIZE - 8;
+                    }else if(gs.worm[i].pos.y + mov_y[i]*STEP < BOUND_BLOCK_SIZE + 8){
+                        gs.worm[i].pos.y = BOUND_BLOCK_SIZE + 8;
+                    }else{
+                        gs.worm[i].pos.y += mov_y[i]*STEP;
+                    }
                 }
 
 
                 //Bomb functionality
-                uint16_t explosion_x;
-                uint16_t explosion_y;
-                if(gs.bomb.state == BOMB_NOT_PRESENT && joypad.b == 1){
-                    gs.bomb.state = BOMB_PRESENT;
-                    gs.bomb.bomb_counter = 120;
-                    for(uint16_t a = 0; a < Y_SIZE; a++){
-                        for(uint16_t b = 0; b < X_SIZE; b++) {
-                            if (gs.worm.pos.x >= gs.matrix_of_blocks[a][b].pos.x){
-                                if (gs.worm.pos.x < gs.matrix_of_blocks[a][b].pos.x + 30){
-                                    if (gs.worm.pos.y >= gs.matrix_of_blocks[a][b].pos.y){
-                                        if (gs.worm.pos.y < gs.matrix_of_blocks[a][b].pos.y + 30){
-                                            explosion_x = gs.matrix_of_blocks[a][b].pos.x + 15;
-                                            explosion_y = gs.matrix_of_blocks[a][b].pos.y + 15;
-                                            gs.bomb.pos.x = gs.matrix_of_blocks[a][b].pos.x + 9;
-                                            gs.bomb.pos.y = gs.matrix_of_blocks[a][b].pos.y + 4;
+                uint16_t explosion_x[NUMBER_OF_PLAYERS];
+                uint16_t explosion_y[NUMBER_OF_PLAYERS];
+
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    if(i == 0){
+                        if(gs.bomb[i].state == BOMB_NOT_PRESENT && joypad.b == 1){
+                            gs.bomb[i].state = BOMB_PRESENT;
+                            gs.bomb[i].bomb_counter = BOMB_TIME;
+                            for(uint16_t a = 0; a < Y_SIZE; a++){
+                                for(uint16_t b = 0; b < X_SIZE; b++) {
+                                    if (gs.worm[i].pos.x >= gs.matrix_of_blocks[a][b].pos.x){
+                                        if (gs.worm[i].pos.x < gs.matrix_of_blocks[a][b].pos.x + 30){
+                                            if (gs.worm[i].pos.y >= gs.matrix_of_blocks[a][b].pos.y){
+                                                if (gs.worm[i].pos.y < gs.matrix_of_blocks[a][b].pos.y + 30){
+                                                    explosion_x[i] = gs.matrix_of_blocks[a][b].pos.x + 15;
+                                                    explosion_y[i] = gs.matrix_of_blocks[a][b].pos.y + 15;
+                                                    gs.bomb[i].pos.x = gs.matrix_of_blocks[a][b].pos.x + 9;
+                                                    gs.bomb[i].pos.y = gs.matrix_of_blocks[a][b].pos.y + 4;
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                    }
-                }else if(gs.bomb.state == BOMB_PRESENT){
-                    gs.bomb.bomb_counter--;
+                        }else if(gs.bomb[i].state == BOMB_PRESENT){
+                            gs.bomb[i].bomb_counter--;
 
-                    if (gs.bomb.bomb_counter < 0){
-                        gs.bomb.bomb_counter = 0;
-                        gs.bomb.state = BOMB_NOT_PRESENT;
-                        gs.explosion.presence = EXPLOSION_PRESENT;
-                        gs.explosion.pos.x = explosion_x;
-                        gs.explosion.pos.y = explosion_y;
+                            if (gs.bomb[i].bomb_counter < 0){
+                                gs.bomb[i].bomb_counter = 0;
+                                gs.bomb[i].state = BOMB_NOT_PRESENT;
+                                gs.explosion[i].presence = EXPLOSION_PRESENT;
+                                gs.explosion[i].pos.x = explosion_x[i];
+                                gs.explosion[i].pos.y = explosion_y[i];
+                            }
+                        }
+                    }else{
+                        if(gs.bomb[i].state == BOMB_NOT_PRESENT && movement == 'B'){
+                            gs.bomb[i].state = BOMB_PRESENT;
+                            gs.bomb[i].bomb_counter = BOMB_TIME;
+                            for(uint16_t a = 0; a < Y_SIZE; a++){
+                                for(uint16_t b = 0; b < X_SIZE; b++) {
+                                    if (gs.worm[i].pos.x >= gs.matrix_of_blocks[a][b].pos.x){
+                                        if (gs.worm[i].pos.x < gs.matrix_of_blocks[a][b].pos.x + 30){
+                                            if (gs.worm[i].pos.y >= gs.matrix_of_blocks[a][b].pos.y){
+                                                if (gs.worm[i].pos.y < gs.matrix_of_blocks[a][b].pos.y + 30){
+                                                    explosion_x[i] = gs.matrix_of_blocks[a][b].pos.x + 15;
+                                                    explosion_y[i] = gs.matrix_of_blocks[a][b].pos.y + 15;
+                                                    gs.bomb[i].pos.x = gs.matrix_of_blocks[a][b].pos.x + 9;
+                                                    gs.bomb[i].pos.y = gs.matrix_of_blocks[a][b].pos.y + 4;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }else if(gs.bomb[i].state == BOMB_PRESENT){
+                            gs.bomb[i].bomb_counter--;
+
+                            if (gs.bomb[i].bomb_counter < 0){
+                                gs.bomb[i].bomb_counter = 0;
+                                gs.bomb[i].state = BOMB_NOT_PRESENT;
+                                gs.explosion[i].presence = EXPLOSION_PRESENT;
+                                gs.explosion[i].pos.x = explosion_x[i];
+                                gs.explosion[i].pos.y = explosion_y[i];
+                            }
+                        }
                     }
                 }
 
@@ -614,212 +808,217 @@ int main(void) {
                 int worm_height;
                 int worm_width;
 
-                switch(pravac){
-                    case 'w':
-                    case 's':
-                        worm_height = 20;
-                        worm_width = 25;
-                        break;
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    switch(direction[i]){
+                        case 'w':
+                        case 's':
+                            worm_height = 20;
+                            worm_width = 25;
+                            break;
 
-                    case 'a':
-                    case 'd':
-                        worm_height = 25;
-                        worm_width = 20;
-                        break;
+                        case 'a':
+                        case 'd':
+                            worm_height = 25;
+                            worm_width = 20;
+                            break;
+                    }
                 }
 
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    //Worm and bomb functionality
+                    if( gs.worm[i].pos.x > gs.explosion[i].pos.x - (worm_width + 8) &&
+                        gs.worm[i].pos.x < gs.explosion[i].pos.x + 8  &&
+                        gs.worm[i].pos.y > gs.explosion[i].pos.y - (40 + worm_height) &&
+                        gs.worm[i].pos.y < gs.explosion[i].pos.y + 40 &&
+                        gs.explosion[i].presence == EXPLOSION_PRESENT) {
+                        gs.worm[i].presence = WORM_NOT_PRESENT;
+                    }else if( gs.worm[i].pos.x > gs.explosion[i].pos.x - (40 + worm_width) &&
+                              gs.worm[i].pos.x < gs.explosion[i].pos.x + 40 &&
+                              gs.worm[i].pos.y > gs.explosion[i].pos.y - (worm_height + 8) &&
+                              gs.worm[i].pos.y < gs.explosion[i].pos.y + 8  &&
+                              gs.explosion[i].presence == EXPLOSION_PRESENT){
+                        gs.worm[i].presence = WORM_NOT_PRESENT;
+                    }
 
-                //Worm and bomb functionality
-                if( gs.worm.pos.x > gs.explosion.pos.x - (worm_width + 8) &&
-                    gs.worm.pos.x < gs.explosion.pos.x + 8  &&
-                    gs.worm.pos.y > gs.explosion.pos.y - (40 + worm_height) &&
-                    gs.worm.pos.y < gs.explosion.pos.y + 40 &&
-                    gs.explosion.presence == EXPLOSION_PRESENT) {
-                    gs.worm.presence = WORM_NOT_PRESENT;
-                }else if( gs.worm.pos.x > gs.explosion.pos.x - (40 + worm_width) &&
-                          gs.worm.pos.x < gs.explosion.pos.x + 40 &&
-                          gs.worm.pos.y > gs.explosion.pos.y - (worm_height + 8) &&
-                          gs.worm.pos.y < gs.explosion.pos.y + 8  &&
-                          gs.explosion.presence == EXPLOSION_PRESENT){
-                    gs.worm.presence = WORM_NOT_PRESENT;
-                }
-
-
-                //Blocks and bomb functionality
-                for(uint16_t a = 0; a < Y_SIZE; a++){
-                    for(uint16_t b = 0; b < X_SIZE; b++) {
-                        if(gs.explosion.pos.x - 40 < gs.matrix_of_blocks[a][b].pos.x + 30 && gs.explosion.pos.x + 40 > gs.matrix_of_blocks[a][b].pos.x
-                           && gs.explosion.pos.y - 8 < gs.matrix_of_blocks[a][b].pos.y + 30 && gs.explosion.pos.y + 8 > gs.matrix_of_blocks[a][b].pos.y
-                           &&  gs.explosion.presence == EXPLOSION_PRESENT)
-                            gs.matrix_of_blocks[a][b].state = BLOCK_DESTROYED;
-                        if(gs.explosion.pos.y - 40 < gs.matrix_of_blocks[a][b].pos.y + 30 && gs.explosion.pos.y + 40 > gs.matrix_of_blocks[a][b].pos.y
-                           && gs.explosion.pos.x - 8 < gs.matrix_of_blocks[a][b].pos.x + 30 && gs.explosion.pos.x + 8 > gs.matrix_of_blocks[a][b].pos.x
-                           &&  gs.explosion.presence == EXPLOSION_PRESENT)
-                            gs.matrix_of_blocks[a][b].state = BLOCK_DESTROYED;
+                    //Blocks and bomb functionality
+                    for(uint16_t a = 0; a < Y_SIZE; a++){
+                        for(uint16_t b = 0; b < X_SIZE; b++) {
+                            if(gs.explosion[i].pos.x - 40 < gs.matrix_of_blocks[a][b].pos.x + 30 && gs.explosion[i].pos.x + 40 > gs.matrix_of_blocks[a][b].pos.x
+                               && gs.explosion[i].pos.y - 8 < gs.matrix_of_blocks[a][b].pos.y + 30 && gs.explosion[i].pos.y + 8 > gs.matrix_of_blocks[a][b].pos.y
+                               &&  gs.explosion[i].presence == EXPLOSION_PRESENT)
+                                gs.matrix_of_blocks[a][b].state = BLOCK_DESTROYED;
+                            if(gs.explosion[i].pos.y - 40 < gs.matrix_of_blocks[a][b].pos.y + 30 && gs.explosion[i].pos.y + 40 > gs.matrix_of_blocks[a][b].pos.y
+                               && gs.explosion[i].pos.x - 8 < gs.matrix_of_blocks[a][b].pos.x + 30 && gs.explosion[i].pos.x + 8 > gs.matrix_of_blocks[a][b].pos.x
+                               &&  gs.explosion[i].presence == EXPLOSION_PRESENT)
+                                gs.matrix_of_blocks[a][b].state = BLOCK_DESTROYED;
+                        }
                     }
                 }
 
 
                 //State machine
 
-                //State machine for worm
-                switch(gs.worm.anim.state){
-                    case WORM_IDLE:
-                        if(mov_x != 0 || mov_y != 0){
-                            gs.worm.anim.delay_cnt = WORM_ANIM_DELAY;
-                            gs.worm.anim.state = WORM_WALK_1;
-                        }
-                        break;
-                    case WORM_WALK_1:
-                        if(gs.worm.anim.delay_cnt != 0){
-                            gs.worm.anim.delay_cnt--;
-                        }else{
-                            if(mov_x != 0 || mov_y != 0){
-                                gs.worm.anim.delay_cnt = WORM_ANIM_DELAY;
-                                gs.worm.anim.state = WORM_WALK_2;
-                            }else{
-                                gs.worm.anim.state = WORM_IDLE;
-                            }
-                        }
-                        break;
-                    case WORM_WALK_2:
-                        if(gs.worm.anim.delay_cnt != 0){
-                            gs.worm.anim.delay_cnt--;
-                        }else{
-                            if(mov_x != 0 || mov_y != 0){
-                                gs.worm.anim.delay_cnt = WORM_ANIM_DELAY;
-                                gs.worm.anim.state = WORM_WALK_3;
-                            }else{
-                                gs.worm.anim.state = WORM_WALK_1;
-                            }
-                        }
-                        break;
-                    case WORM_WALK_3:
-                        if(gs.worm.anim.delay_cnt != 0){
-                            gs.worm.anim.delay_cnt--;
-                        }else{
-                            if(mov_x != 0 || mov_y != 0){
-                                gs.worm.anim.delay_cnt = WORM_ANIM_DELAY;
-                                gs.worm.anim.state = WORM_WALK_4;
-                            }else{
-                                gs.worm.anim.state = WORM_WALK_2;
-                            }
-                        }
-                        break;
-                    case WORM_WALK_4:
-                        if(gs.worm.anim.delay_cnt != 0){
-                            gs.worm.anim.delay_cnt--;
-                        }else{
-                            if(mov_x != 0 || mov_y != 0){
-                                gs.worm.anim.delay_cnt = WORM_ANIM_DELAY;
-                                gs.worm.anim.state = WORM_WALK_5;
-                            }else{
-                                gs.worm.anim.state = WORM_WALK_3;
-                            }
-                        }
-                        break;
-                    case WORM_WALK_5:
-                        if(gs.worm.anim.delay_cnt != 0){
-                            gs.worm.anim.delay_cnt--;
-                        }else{
-                            if(mov_x != 0 || mov_y != 0){
-                                gs.worm.anim.delay_cnt = WORM_ANIM_DELAY;
-                                gs.worm.anim.state = WORM_WALK_6;
-                            }else{
-                                gs.worm.anim.state = WORM_WALK_2;
-                            }
-                        }
-                        break;
-                    case WORM_WALK_6:
-                        if(gs.worm.anim.delay_cnt != 0){
-                            gs.worm.anim.delay_cnt--;
-                        }else{
-                            if(mov_x != 0 || mov_y != 0){
-                                gs.worm.anim.delay_cnt = WORM_ANIM_DELAY;
-                                gs.worm.anim.state = WORM_WALK_7;
-                            }else{
-                                gs.worm.anim.state = WORM_WALK_1;
-                            }
-                        }
-                        break;
-                    case WORM_WALK_7:
-                        if(gs.worm.anim.delay_cnt != 0){
-                            gs.worm.anim.delay_cnt--;
-                        }else{
-                            gs.worm.anim.delay_cnt = WORM_ANIM_DELAY;
-                            gs.worm.anim.state = WORM_IDLE;
-                        }
-                        break;
-                }
-
-
-                //State machine for explosion
-                if(gs.explosion.presence == EXPLOSION_PRESENT){
-                    switch (gs.explosion.state) {
-                        case EXPLOSION_IDLE:
-                            gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                            gs.explosion.state = EXPLOSION_1;
-                            break;
-                        case EXPLOSION_1:
-                            if(gs.explosion.delay_cnt != 0){
-                                gs.explosion.delay_cnt--;
-                            }else{
-                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                                gs.explosion.state = EXPLOSION_2;
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    //State machine for worm
+                    switch(gs.worm[i].anim.state){
+                        case WORM_IDLE:
+                            if(mov_x[i] != 0 || mov_y[i] != 0){
+                                gs.worm[i].anim.delay_cnt = WORM_ANIM_DELAY;
+                                gs.worm[i].anim.state = WORM_WALK_1;
                             }
                             break;
-                        case EXPLOSION_2:
-                            if(gs.explosion.delay_cnt != 0){
-                                gs.explosion.delay_cnt--;
+                        case WORM_WALK_1:
+                            if(gs.worm[i].anim.delay_cnt != 0){
+                                gs.worm[i].anim.delay_cnt--;
                             }else{
-                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                                gs.explosion.state = EXPLOSION_3;
+                                if(mov_x[i] != 0 || mov_y[i] != 0){
+                                    gs.worm[i].anim.delay_cnt = WORM_ANIM_DELAY;
+                                    gs.worm[i].anim.state = WORM_WALK_2;
+                                }else{
+                                    gs.worm[i].anim.state = WORM_IDLE;
+                                }
                             }
                             break;
-                        case EXPLOSION_3:
-                            if(gs.explosion.delay_cnt != 0){
-                                gs.explosion.delay_cnt--;
+                        case WORM_WALK_2:
+                            if(gs.worm[i].anim.delay_cnt != 0){
+                                gs.worm[i].anim.delay_cnt--;
                             }else{
-                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                                gs.explosion.state = EXPLOSION_4;
+                                if(mov_x[i] != 0 || mov_y[i] != 0){
+                                    gs.worm[i].anim.delay_cnt = WORM_ANIM_DELAY;
+                                    gs.worm[i].anim.state = WORM_WALK_3;
+                                }else{
+                                    gs.worm[i].anim.state = WORM_WALK_1;
+                                }
                             }
                             break;
-                        case EXPLOSION_4:
-                            if(gs.explosion.delay_cnt != 0){
-                                gs.explosion.delay_cnt--;
+                        case WORM_WALK_3:
+                            if(gs.worm[i].anim.delay_cnt != 0){
+                                gs.worm[i].anim.delay_cnt--;
                             }else{
-                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                                gs.explosion.state = EXPLOSION_5;
+                                if(mov_x[i] != 0 || mov_y[i] != 0){
+                                    gs.worm[i].anim.delay_cnt = WORM_ANIM_DELAY;
+                                    gs.worm[i].anim.state = WORM_WALK_4;
+                                }else{
+                                    gs.worm[i].anim.state = WORM_WALK_2;
+                                }
                             }
                             break;
-                        case EXPLOSION_5:
-                            if(gs.explosion.delay_cnt != 0){
-                                gs.explosion.delay_cnt--;
+                        case WORM_WALK_4:
+                            if(gs.worm[i].anim.delay_cnt != 0){
+                                gs.worm[i].anim.delay_cnt--;
                             }else{
-                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                                gs.explosion.state = EXPLOSION_6;
+                                if(mov_x[i] != 0 || mov_y[i] != 0){
+                                    gs.worm[i].anim.delay_cnt = WORM_ANIM_DELAY;
+                                    gs.worm[i].anim.state = WORM_WALK_5;
+                                }else{
+                                    gs.worm[i].anim.state = WORM_WALK_3;
+                                }
                             }
                             break;
-                        case EXPLOSION_6:
-                            if(gs.explosion.delay_cnt != 0){
-                                gs.explosion.delay_cnt--;
+                        case WORM_WALK_5:
+                            if(gs.worm[i].anim.delay_cnt != 0){
+                                gs.worm[i].anim.delay_cnt--;
                             }else{
-                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                                gs.explosion.state = EXPLOSION_7;
+                                if(mov_x[i] != 0 || mov_y[i] != 0){
+                                    gs.worm[i].anim.delay_cnt = WORM_ANIM_DELAY;
+                                    gs.worm[i].anim.state = WORM_WALK_6;
+                                }else{
+                                    gs.worm[i].anim.state = WORM_WALK_2;
+                                }
                             }
                             break;
-                        case EXPLOSION_7:
-                            if(gs.explosion.delay_cnt != 0){
-                                gs.explosion.delay_cnt--;
+                        case WORM_WALK_6:
+                            if(gs.worm[i].anim.delay_cnt != 0){
+                                gs.worm[i].anim.delay_cnt--;
                             }else{
-                                gs.explosion.delay_cnt = BOMB_ANIM_DELAY;
-                                gs.explosion.state = EXPLOSION_IDLE;
-                                gs.explosion.presence = EXPLOSION_NOT_PRESENT;
+                                if(mov_x[i] != 0 || mov_y[i] != 0){
+                                    gs.worm[i].anim.delay_cnt = WORM_ANIM_DELAY;
+                                    gs.worm[i].anim.state = WORM_WALK_7;
+                                }else{
+                                    gs.worm[i].anim.state = WORM_WALK_1;
+                                }
+                            }
+                            break;
+                        case WORM_WALK_7:
+                            if(gs.worm[i].anim.delay_cnt != 0){
+                                gs.worm[i].anim.delay_cnt--;
+                            }else{
+                                gs.worm[i].anim.delay_cnt = WORM_ANIM_DELAY;
+                                gs.worm[i].anim.state = WORM_IDLE;
                             }
                             break;
                     }
-                }else{
-                    gs.explosion.state = EXPLOSION_IDLE;
+                }
+
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    //State machine for explosion
+                    if(gs.explosion[i].presence == EXPLOSION_PRESENT){
+                        switch (gs.explosion[i].state) {
+                            case EXPLOSION_IDLE:
+                                gs.explosion[i].delay_cnt = BOMB_ANIM_DELAY;
+                                gs.explosion[i].state = EXPLOSION_1;
+                                break;
+                            case EXPLOSION_1:
+                                if(gs.explosion[i].delay_cnt != 0){
+                                    gs.explosion[i].delay_cnt--;
+                                }else{
+                                    gs.explosion[i].delay_cnt = BOMB_ANIM_DELAY;
+                                    gs.explosion[i].state = EXPLOSION_2;
+                                }
+                                break;
+                            case EXPLOSION_2:
+                                if(gs.explosion[i].delay_cnt != 0){
+                                    gs.explosion[i].delay_cnt--;
+                                }else{
+                                    gs.explosion[i].delay_cnt = BOMB_ANIM_DELAY;
+                                    gs.explosion[i].state = EXPLOSION_3;
+                                }
+                                break;
+                            case EXPLOSION_3:
+                                if(gs.explosion[i].delay_cnt != 0){
+                                    gs.explosion[i].delay_cnt--;
+                                }else{
+                                    gs.explosion[i].delay_cnt = BOMB_ANIM_DELAY;
+                                    gs.explosion[i].state = EXPLOSION_4;
+                                }
+                                break;
+                            case EXPLOSION_4:
+                                if(gs.explosion[i].delay_cnt != 0){
+                                    gs.explosion[i].delay_cnt--;
+                                }else{
+                                    gs.explosion[i].delay_cnt = BOMB_ANIM_DELAY;
+                                    gs.explosion[i].state = EXPLOSION_5;
+                                }
+                                break;
+                            case EXPLOSION_5:
+                                if(gs.explosion[i].delay_cnt != 0){
+                                    gs.explosion[i].delay_cnt--;
+                                }else{
+                                    gs.explosion[i].delay_cnt = BOMB_ANIM_DELAY;
+                                    gs.explosion[i].state = EXPLOSION_6;
+                                }
+                                break;
+                            case EXPLOSION_6:
+                                if(gs.explosion[i].delay_cnt != 0){
+                                    gs.explosion[i].delay_cnt--;
+                                }else{
+                                    gs.explosion[i].delay_cnt = BOMB_ANIM_DELAY;
+                                    gs.explosion[i].state = EXPLOSION_7;
+                                }
+                                break;
+                            case EXPLOSION_7:
+                                if(gs.explosion[i].delay_cnt != 0){
+                                    gs.explosion[i].delay_cnt--;
+                                }else{
+                                    gs.explosion[i].delay_cnt = BOMB_ANIM_DELAY;
+                                    gs.explosion[i].state = EXPLOSION_IDLE;
+                                    gs.explosion[i].presence = EXPLOSION_NOT_PRESENT;
+                                }
+                                break;
+                        }
+                    }else{
+                        gs.explosion[i].state = EXPLOSION_IDLE;
+                    }
                 }
 
 
@@ -838,132 +1037,138 @@ int main(void) {
                 }
 
                 //Draw bomb
-                if(gs.bomb.state == BOMB_PRESENT){
-                    draw_sprite_from_atlas_worms(13, 382, 11, 21, gs.bomb.pos.x, gs.bomb.pos.y, 'b');
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    if(gs.bomb[i].state == BOMB_PRESENT) {
+                        draw_sprite_from_atlas_worms(13, 382, 11, 21, gs.bomb[i].pos.x, gs.bomb[i].pos.y, 'b');
+                    }
                 }
 
                 //Draw worm
-                if(gs.worm.presence == WORM_PRESENT){
-                    switch(gs.worm.anim.state){
-                        case WORM_IDLE:
-                            switch(pravac){
-                                case 'w':
-                                    draw_sprite_from_atlas_worms(696 - 33, 8, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 'a':
-                                    draw_sprite_from_atlas_worms(9, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 's':
-                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 28, 25, 20, gs.worm.pos.x, gs.worm.pos.y, 's');
-                                    break;
-                                case 'd':
-                                    draw_sprite_from_atlas_worms(1920 - 28, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                default:
-                                    break;
-                            }
-                            break;
-                        case WORM_WALK_1:
-                        case WORM_WALK_7:
-                            switch(pravac){
-                                case 'w':
-                                    draw_sprite_from_atlas_worms(696 - 33, 45, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 'a':
-                                    //TODO ispitaj dal' 46 ili 45
-                                    draw_sprite_from_atlas_worms(46, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 's':
-                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 65, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 'd':
-                                    draw_sprite_from_atlas_worms(1920 - 65, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                default:
-                                    break;
-                            }
-                            break;
-                        case WORM_WALK_2:
-                        case WORM_WALK_6:
-                            switch(pravac){
-                                case 'w':
-                                    draw_sprite_from_atlas_worms(696 - 33, 85, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 'a':
-                                    draw_sprite_from_atlas_worms(85, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 's':
-                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 101, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 'd':
-                                    draw_sprite_from_atlas_worms(1920 - 101, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                default:
-                                    break;
-                            }
-                            break;
-                        case WORM_WALK_3:
-                        case WORM_WALK_5:
-                            switch(pravac){
-                                case 'w':
-                                    draw_sprite_from_atlas_worms(696 - 33, 120, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 'a':
-                                    draw_sprite_from_atlas_worms(120, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 's':
-                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 140, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 'd':
-                                    draw_sprite_from_atlas_worms(1920 - 139, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                default:
-                                    break;
-                            }
-                            break;
-                        case WORM_WALK_4:
-                            switch(pravac){
-                                case 'w':
-                                    draw_sprite_from_atlas_worms(696 - 33, 155, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 'a':
-                                    draw_sprite_from_atlas_worms(155, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 's':
-                                    draw_sprite_from_atlas_worms(696 - 33, 1920 - 175, 25, 20, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                case 'd':
-                                    draw_sprite_from_atlas_worms(1920 - 175, 9, 20, 25, gs.worm.pos.x, gs.worm.pos.y, pravac);
-                                    break;
-                                default:
-                                    break;
-                            }
-                            break;
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    if(gs.worm[i].presence == WORM_PRESENT){
+                        switch(gs.worm[i].anim.state){
+                            case WORM_IDLE:
+                                switch(direction[i]){
+                                    case 'w':
+                                        draw_sprite_from_atlas_worms(696 - 33, 8, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'a':
+                                        draw_sprite_from_atlas_worms(9, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 's':
+                                        draw_sprite_from_atlas_worms(696 - 33, 1920 - 28, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'd':
+                                        draw_sprite_from_atlas_worms(1920 - 28, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                break;
+                            case WORM_WALK_1:
+                            case WORM_WALK_7:
+                                switch(direction[i]){
+                                    case 'w':
+                                        draw_sprite_from_atlas_worms(696 - 33, 45, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'a':
+                                        //TODO ispitaj dal' 46 ili 45
+                                        draw_sprite_from_atlas_worms(46, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 's':
+                                        draw_sprite_from_atlas_worms(696 - 33, 1920 - 65, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'd':
+                                        draw_sprite_from_atlas_worms(1920 - 65, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                break;
+                            case WORM_WALK_2:
+                            case WORM_WALK_6:
+                                switch(direction[i]){
+                                    case 'w':
+                                        draw_sprite_from_atlas_worms(696 - 33, 85, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'a':
+                                        draw_sprite_from_atlas_worms(85, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 's':
+                                        draw_sprite_from_atlas_worms(696 - 33, 1920 - 101, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'd':
+                                        draw_sprite_from_atlas_worms(1920 - 101, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                break;
+                            case WORM_WALK_3:
+                            case WORM_WALK_5:
+                                switch(direction[i]){
+                                    case 'w':
+                                        draw_sprite_from_atlas_worms(696 - 33, 120, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'a':
+                                        draw_sprite_from_atlas_worms(120, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 's':
+                                        draw_sprite_from_atlas_worms(696 - 33, 1920 - 140, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'd':
+                                        draw_sprite_from_atlas_worms(1920 - 139, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                break;
+                            case WORM_WALK_4:
+                                switch(direction[i]){
+                                    case 'w':
+                                        draw_sprite_from_atlas_worms(696 - 33, 155, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'a':
+                                        draw_sprite_from_atlas_worms(155, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 's':
+                                        draw_sprite_from_atlas_worms(696 - 33, 1920 - 175, 25, 20, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    case 'd':
+                                        draw_sprite_from_atlas_worms(1920 - 175, 9, 20, 25, gs.worm[i].pos.x, gs.worm[i].pos.y, direction[i]);
+                                        break;
+                                    default:
+                                        break;
+                                }
+                                break;
+                        }
+                    }else if(gs.worm[i].presence == WORM_NOT_PRESENT){
+                        //TODO dodaj da crv crkava
                     }
-                }else if(gs.worm.presence == WORM_NOT_PRESENT){
-                    //TODO dodaj da crv crkava
                 }
 
                 //Draw explosion
-                if(gs.explosion.presence == EXPLOSION_PRESENT){
-                    switch (gs.explosion.state) {
-                        case EXPLOSION_IDLE:
-                            break;
-                        case EXPLOSION_1:
-                        case EXPLOSION_7:
-                            draw_sprite_from_atlas_explosion(41, 448, 72, 72, gs.explosion.pos.x, gs.explosion.pos.y, 35, 35);
-                            break;
-                        case EXPLOSION_2:
-                        case EXPLOSION_6:
-                            draw_sprite_from_atlas_explosion(130, 447, 74, 74, gs.explosion.pos.x, gs.explosion.pos.y, 36, 36);
-                            break;
-                        case EXPLOSION_3:
-                        case EXPLOSION_5:
-                            draw_sprite_from_atlas_explosion(34, 556, 79, 80, gs.explosion.pos.x, gs.explosion.pos.y, 38, 39);
-                            break;
-                        case EXPLOSION_4:
-                            draw_sprite_from_atlas_explosion(133, 557, 80, 80, gs.explosion.pos.x, gs.explosion.pos.y, 39, 39);
-                            break;
+                for(i = 0; i < NUMBER_OF_PLAYERS; i++){
+                    if(gs.explosion[i].presence == EXPLOSION_PRESENT){
+                        switch (gs.explosion[i].state) {
+                            case EXPLOSION_IDLE:
+                                break;
+                            case EXPLOSION_1:
+                            case EXPLOSION_7:
+                                draw_sprite_from_atlas_explosion(41, 448, 72, 72, gs.explosion[i].pos.x, gs.explosion[i].pos.y, 35, 35);
+                                break;
+                            case EXPLOSION_2:
+                            case EXPLOSION_6:
+                                draw_sprite_from_atlas_explosion(130, 447, 74, 74, gs.explosion[i].pos.x, gs.explosion[i].pos.y, 36, 36);
+                                break;
+                            case EXPLOSION_3:
+                            case EXPLOSION_5:
+                                draw_sprite_from_atlas_explosion(34, 556, 79, 80, gs.explosion[i].pos.x, gs.explosion[i].pos.y, 38, 39);
+                                break;
+                            case EXPLOSION_4:
+                                draw_sprite_from_atlas_explosion(133, 557, 80, 80, gs.explosion[i].pos.x, gs.explosion[i].pos.y, 39, 39);
+                                break;
+                        }
                     }
                 }
 
