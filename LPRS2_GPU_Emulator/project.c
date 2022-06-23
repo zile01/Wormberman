@@ -43,7 +43,7 @@ char pom_movement;
 #define joypad_p32 ((volatile uint32_t*)LPRS2_JOYPAD_BASE)
 
 #define STEP 1
-#define BULLET_STEP 3
+#define BULLET_STEP 4
 #define WORM_ANIM_DELAY 7
 #define BOMB_ANIM_DELAY 5
 #define X_SIZE 15
@@ -51,10 +51,10 @@ char pom_movement;
 #define BLOCK_SIZE 30
 #define BOUND_BLOCK_SIZE 15
 #define PROBABILITY 40
-#define BOMB_TIME 90
+#define BOMB_TIME 100
 #define NUMBER_OF_PLAYERS 2
 #define START_DELAY 120
-#define BULLET_COUNTER 60
+#define BULLET_COUNTER 30
 
 //Structures
 //Struct for controller
@@ -384,7 +384,7 @@ void draw_map(uint16_t src_x, uint16_t src_y){
     uint16_t dst_y_right = 8;
 
     //TODO jedan pixel dole je ostao nedirnut, ako bude potrebno, regulisi ovo
-    for(uint16_t z = 0; z < 17; z++){
+    for(uint16_t z = 0; z < 16; z++){
         for(uint16_t y = 0; y < BOUND_BLOCK_SIZE; y++){
             for(uint16_t x = 0; x < BOUND_BLOCK_SIZE; x++){
                 uint32_t src_idx = (src_y+y)*walls__w + (src_x+x);
@@ -409,11 +409,19 @@ void draw_map(uint16_t src_x, uint16_t src_y){
     uint16_t dst_x_lower_pom = 0;
     uint16_t dst_y_lower_pom = 256 - 8;
 
+    //TODO Brisi ovu skrnavstinu posle odbrane
+    for(uint16_t y = 0; y < 20; y++) {
+        for (uint16_t x = 0; x < 480; x++) {
+            uint32_t dst_idx_pom = (dst_y_lower_pom + y) * SCREEN_RGB333_W + (dst_x_lower_pom + x);
+            unpack_rgb333_p32[dst_idx_pom] = 0;
+        }
+    }
+
     for(uint16_t y = 0; y < 8; y++) {
         for (uint16_t x = 0; x < 480; x++) {
             uint32_t dst_idx_pom = (dst_y_upper_pom + y) * SCREEN_RGB333_W + (dst_x_upper_pom + x);
             unpack_rgb333_p32[dst_idx_pom] = 5;
-
+//            KADA JE MOJ MONITOR
             dst_idx_pom = (dst_y_lower_pom + y) * SCREEN_RGB333_W + (dst_x_lower_pom + x);
             unpack_rgb333_p32[dst_idx_pom] = 5;
         }
@@ -752,8 +760,9 @@ int main(void) {
     gs.start_delay = START_DELAY;
 
     int i;
+
+    //Worm settings
     for(i = 0; i < NUMBER_OF_PLAYERS; i++){
-        //Worm settings
         gs.worm[i].presence = WORM_PRESENT;
         gs.worm[i].pos.x = x_offset_array[i];
         gs.worm[i].pos.y = y_offset_array[i];
@@ -816,7 +825,7 @@ int main(void) {
                 //Game loop
                 while (1) {
 
-                    if (speed == 22) {
+                    if (speed == 20) {
                         movement = " ";
                         speed = 0;
                     }
@@ -1726,6 +1735,7 @@ int main(void) {
                 break;
             case START_PHASE:
                 draw_notifications(0, 0, 480, 256, 0, 0, 0);
+                draw_sprite_from_atlas_worms(115, 266, 55, 59, 334, 43, 'a');
 
                 sleep(2);
 
@@ -1738,8 +1748,6 @@ int main(void) {
                 }else if(end_flag == 2){
                     draw_notifications(0, 0, 480, 256, 0, 0, 1);
                 }
-
-                sleep(1);
 
                 break;
         }
